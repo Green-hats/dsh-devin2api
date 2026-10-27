@@ -106,6 +106,20 @@ function fakeContext() {
 	return { ctx, registrations };
 }
 
+/** 在桩 React 的元素树里找一个满足条件的元素。 */
+function findElement(node, predicate) {
+	if (node === null || typeof node !== 'object') return undefined;
+	if (Array.isArray(node)) {
+		for (const child of node) {
+			const found = findElement(child, predicate);
+			if (found !== undefined) return found;
+		}
+		return undefined;
+	}
+	if (predicate(node)) return node;
+	return findElement(node.children, predicate);
+}
+
 test('client 模块注册额度胶囊与设置页条目', () => {
 	const module = loadClient();
 	assert.deepEqual(module.inject, ['slots']);
@@ -150,6 +164,68 @@ test('配置表单只保留一条活跃订阅', () => {
 	};
 	module.apply(ctx);
 	assert.equal(listeners.size, 1, '同步 attach 与注入 attach 之后只应保留一条订阅');
+});
+
+test('设置未加载完时模型开关不写入', () => {
+	const module = loadClient();
+	const mutateCalls = [];
+	const form = {
+		getSnapshot: () => ({ status: 'loading', writable: true, revision: undefined, value: undefined }),
+		subscribe: () => () => {},
+		mutate: async (...args) => {
+			mutateCalls.push(args);
+			return true;
+		},
+	};
+	const forms = {
+		get: () => form,
+		describe: () => ({ getSnapshot: () => ({ view: { namespaces: [{ ns: 'devin2api', value: { providers: { devin2api: {} } } }] } }) }),
+	};
+	const registrations = [];
+	const slots = {
+		inject: (_name, register) => (register(), () => {}),
+		register: (options, view) => {
+			registrations.push({ options, view });
+			return () => {};
+		},
+	};
+	const ctx = {
+		slots,
+		get: (name) => (name === 'configForms' ? forms : undefined),
+		effect: (fn) => {
+			const dispose = fn();
+			return typeof dispose === 'function' ? dispose : () => {};
+		},
+		inject: (services, callback) => {
+			if (services.includes('configForms')) callback({ ...ctx, configForms: forms });
+			return () => {};
+		},
+	};
+	module.apply(ctx);
+	const guarded = registrations.find((entry) => entry.options.id === 'devin2api').view;
+	const panel = guarded({}).children[0].type;
+	stateQueue.push(
+		{ data: { status: 'ok' }, error: null, at: 0 },
+		{ data: null, error: null, at: 0 },
+		{ data: { data: [{ id: 'glm-5-2' }] }, error: null, at: 0 },
+		'',
+		null,
+	);
+	let tree;
+	try {
+		tree = panel({});
+	} finally {
+		stateQueue.length = 0;
+	}
+	const toggle = findElement(
+		tree,
+		(node) => typeof node?.props?.onChange === 'function' && String(node.props.label).includes('glm-5-2'),
+	);
+	assert.ok(toggle, '模型行应渲染出开关');
+	toggle.props.onChange(false);
+	return new Promise((resolve) => setTimeout(resolve, 10)).then(() => {
+		assert.equal(mutateCalls.length, 0, '未 ready 时不应写回整张字典');
+	});
 });
 
 test('胶囊在非 devin2api 模型下隐藏', () => {
