@@ -120,6 +120,51 @@ function findElement(node, predicate) {
 	return findElement(node.children, predicate);
 }
 
+/** 只有一个 configForms 表单的上下文，用于验证面板对状态的反应。 */
+function contextWithForm(form) {
+	const registrations = [];
+	const forms = {
+		get: () => form,
+		describe: () => ({ getSnapshot: () => ({ view: { namespaces: [{ ns: 'devin2api', value: { providers: { devin2api: {} } } }] } }) }),
+	};
+	const slots = {
+		inject: (_name, register) => (register(), () => {}),
+		register: (options, view) => {
+			registrations.push({ options, view });
+			return () => {};
+		},
+	};
+	const ctx = {
+		slots,
+		get: (name) => (name === 'configForms' ? forms : undefined),
+		effect: (fn) => {
+			const dispose = fn();
+			return typeof dispose === 'function' ? dispose : () => {};
+		},
+		inject: (services, callback) => {
+			if (services.includes('configForms')) callback({ ...ctx, configForms: forms });
+			return () => {};
+		},
+	};
+	return { ctx, registrations };
+}
+
+/** 用给定状态渲染一次设置面板。 */
+function renderPanel(panel, models) {
+	stateQueue.push(
+		{ data: { status: 'ok' }, error: null, at: 0 },
+		{ data: null, error: null, at: 0 },
+		{ data: { data: models }, error: null, at: 0 },
+		'',
+		null,
+	);
+	try {
+		return panel({});
+	} finally {
+		stateQueue.length = 0;
+	}
+}
+
 test('client 模块注册额度胶囊与设置页条目', () => {
 	const module = loadClient();
 	assert.deepEqual(module.inject, ['slots']);
@@ -226,6 +271,31 @@ test('设置未加载完时模型开关不写入', () => {
 	return new Promise((resolve) => setTimeout(resolve, 10)).then(() => {
 		assert.equal(mutateCalls.length, 0, '未 ready 时不应写回整张字典');
 	});
+});
+
+test('只读设置下模型开关是禁用的', () => {
+	const module = loadClient();
+	const form = {
+		getSnapshot: () => ({
+			status: 'ready',
+			writable: false,
+			revision: 1,
+			value: { providers: { devin2api: { baseURL: 'http://127.0.0.1:18089/v1', modelVisibility: {} } } },
+		}),
+		subscribe: () => () => {},
+		mutate: async () => true,
+	};
+	const { ctx, registrations } = contextWithForm(form);
+	module.apply(ctx);
+	const guarded = registrations.find((entry) => entry.options.id === 'devin2api').view;
+	const panel = guarded({}).children[0].type;
+	const tree = renderPanel(panel, [{ id: 'glm-5-2' }]);
+	const toggle = findElement(
+		tree,
+		(node) => typeof node?.props?.onChange === 'function' && String(node.props.label).includes('glm-5-2'),
+	);
+	assert.ok(toggle, '模型行应渲染出开关');
+	assert.equal(toggle.props.disabled, true, '只读时开关应禁用');
 });
 
 test('胶囊在非 devin2api 模型下隐藏', () => {
