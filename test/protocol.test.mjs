@@ -83,6 +83,21 @@ test('消息与工具转换为 OpenAI Chat Completions', () => {
 	assert.equal(body.tools[0].function.name, 'lookup');
 });
 
+test('历史中段的 system 消息不会被丢弃', () => {
+	const messages = toChatMessages({
+		messages: [
+			{ role: 'user', content: [{ type: 'text', text: 'hi' }] },
+			{ role: 'system', content: [{ type: 'text', text: 'later instruction' }] },
+			{ role: 'user', content: [{ type: 'text', text: 'again' }] },
+		],
+	});
+	assert.deepEqual(messages, [
+		{ role: 'user', content: 'hi' },
+		{ role: 'system', content: 'later instruction' },
+		{ role: 'user', content: 'again' },
+	]);
+});
+
 test('图片在纯文本路由上退化为占位文本', () => {
 	const messages = toChatMessages({
 		messages: [{ role: 'user', content: [{ type: 'text', text: 'see ' }, { type: 'image' }, { type: 'file' }] }],
