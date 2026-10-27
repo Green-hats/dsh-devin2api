@@ -125,3 +125,35 @@ test('apply 保留 volatile 引用：挂载后的设置变更仍能到达适配�
 	assert.equal(adapter.config.baseURL, 'http://b.example/v1', '设置变更应立即生效');
 	assert.deepEqual(adapter.config.modelVisibility, { beta: false });
 });
+
+/** 假附件服务：任何引用都返回一小段 PNG 字节。 */
+function fakeAttachments() {
+	return {
+		readImageRequest: async () => ({ data: new Uint8Array([137, 80, 78, 71]), mediaType: 'image/png' }),
+	};
+}
+
+test('工具调用不打断当前轮图片上传', needsHost, async () => {
+	const adapter = new DevinAdapter({ images: true }, console, () => fakeAttachments());
+	const image = {
+		type: 'image',
+		attachment: { attachmentId: 'a1', mediaType: 'image/png', bytes: 4, width: 10, height: 10 },
+	};
+	const turn = [
+		{ role: 'user', content: [{ type: 'text', text: 'look' }, image] },
+		{ role: 'assistant', content: [{ type: 'tool-call', id: 'c1', name: 'look', arguments: '{}' }] },
+		{ role: 'tool', toolCallId: 'c1', content: [{ type: 'text', text: 'done' }] },
+	];
+	const kept = await adapter.withImages(turn);
+	assert.equal(kept[0].content[1].type, 'image-data', '同一轮的工具调用后仍应上传图片');
+
+	const next = await adapter.withImages([
+		...turn,
+		{ role: 'assistant', content: [{ type: 'text', text: 'A screenshot.' }] },
+		{ role: 'user', content: [{ type: 'text', text: 'and this?' }] },
+	]);
+	assert.ok(
+		next[0].content.some((block) => block.type === 'text' && block.text.includes('Image omitted from history')),
+		'新一轮开始后历史图片应替换为占位文本',
+	);
+});

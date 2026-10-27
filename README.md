@@ -66,9 +66,9 @@ curl -s http://127.0.0.1:18089/healthz
 
 ## 图片
 
-- 只对**当前轮**读取附件：找到最后一条 assistant 消息，其后的 user/tool 图片才会上传。
-  历史图片替换为 `[Image omitted from history]`——网关本身也只接受当前轮图片，这样还能
-  避免把整个会话的历史图重复塞进请求体。
+- 只对**当前轮**读取附件：当前轮从最后一条 user 消息开始，从它（含其后的 tool 结果）取图；
+  同一轮里的工具调用不会让图片掉线。更早的图片替换为 `[Image omitted from history]`
+  ——网关本身也只接受当前轮图片，这样还能避免把整个会话的历史图重复塞进请求体。
 - `supports_images=false` 的模型不声明图片能力，DSH 会在请求前把图片换成占位文本，
   不会打到网关上换一个 400。
 - 单图按 `imagePixelBudget` / `imageMaxBytes` 缩放后才编码；整次请求超过
