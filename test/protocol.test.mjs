@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { test } from 'node:test';
 
-import { parseModels, classifyHTTPError, parseQuota, toResolvedModel } from '../lib/catalog.js';
+import { filterByVisibility, parseModels, classifyHTTPError, parseQuota, toResolvedModel } from '../lib/catalog.js';
 import { StreamTranslator, readSSE, toChatMessages, toChatRequest } from '../lib/protocol.js';
 
 /** 起一个只发 SSE 的假网关。 */
@@ -215,4 +215,13 @@ test('目录与额度解析', () => {
 	assert.deepEqual(classifyHTTPError(401, 'no'), { message: 'no', code: 'AUTH' });
 	assert.deepEqual(classifyHTTPError(429, 'slow'), { message: 'slow', code: 'QUOTA' });
 	assert.deepEqual(classifyHTTPError(502, ''), { message: 'HTTP 502', code: 'SERVER' });
+});
+
+test('模型开关按 modelVisibility 过滤，全关时退回全量', () => {
+	const models = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+	assert.deepEqual(filterByVisibility(models, {}).map((m) => m.id), ['a', 'b', 'c']);
+	assert.deepEqual(filterByVisibility(models, undefined).map((m) => m.id), ['a', 'b', 'c']);
+	assert.deepEqual(filterByVisibility(models, { b: false }).map((m) => m.id), ['a', 'c']);
+	assert.deepEqual(filterByVisibility(models, { a: true, b: false }).map((m) => m.id), ['a', 'c']);
+	assert.deepEqual(filterByVisibility(models, { a: false, b: false, c: false }).map((m) => m.id), ['a', 'b', 'c']);
 });

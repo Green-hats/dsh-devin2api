@@ -82,13 +82,26 @@ curl -s http://127.0.0.1:18089/healthz
 | 位置 | 内容 |
 | --- | --- |
 | 对话输入框右侧胶囊 | `日 71% │ 周 65%`，仅当会话选中 Devin2API 模型时出现；悬停显示模型名、套餐、两个重置时间；点击立即刷新 |
-| 设置 → **Devin2API** | 用量面板：网关连接状态、今日/本周进度条与各自重置时间、模型目录（共几个、几个支持图片），带「刷新」 |
+| 设置 → **Devin2API** | 用量面板：网关连接状态、今日/本周进度条与各自重置时间，带「刷新」 |
+| 设置 → **Devin2API** → 模型目录 | 每个模型一行开关，可搜索、可全开/全关；关掉的模型不出现在选择器里 |
 
 设置页这类目由 `settings.section` 插槽注册（与 `dsh-opencode-go` 同一机制）。面板通过
 `configForms` 读取 `providers.devin2api.baseURL`，所以在「模型」页改过地址后，面板会跟着走。
 
 模型的可编辑行（baseURL、密钥、图片开关）由 `registerConfigurableProviders` 提供，位于
 **设置 → 模型 → Devin2API**，不在插件自己的面板里重复一遍。
+
+## 模型开关
+
+面板里的模型列表来自网关的 `GET /v1/models`。每个模型一个开关，点一下**立即写入**
+`providers.devin2api.modelVisibility`（`{ "模型 id": false }`），不需要点保存——与
+`dsh-opencode-go` 的行为一致。宿主侧 `filterByVisibility` 把 `false` 的模型从
+`listModels` 和模型发现里都去掉，所以聊天里的模型选择器会立刻少掉这些条目。
+
+两个兜底：
+
+- 字典里没有的 id 视为开启（默认全开），所以新模型上线不会被默认隐藏。
+- 全部关掉时退回完整目录并打一条 warn——避免手滑把选择器清空。
 
 ## 额度胶囊
 
