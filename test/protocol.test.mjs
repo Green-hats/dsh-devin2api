@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { test } from 'node:test';
 
-import { filterByVisibility, parseModels, classifyHTTPError, parseQuota, toResolvedModel } from '../lib/catalog.js';
+import { filterByVisibility, parseModels, classifyHTTPError, parseQuota, toResolvedModel, unwrapVolatile } from '../lib/catalog.js';
 import { StreamTranslator, readSSE, toChatMessages, toChatRequest } from '../lib/protocol.js';
 
 /** 起一个只发 SSE 的假网关。 */
@@ -224,4 +224,31 @@ test('模型开关按 modelVisibility 过滤，全关时退回全量', () => {
 	assert.deepEqual(filterByVisibility(models, { b: false }).map((m) => m.id), ['a', 'c']);
 	assert.deepEqual(filterByVisibility(models, { a: true, b: false }).map((m) => m.id), ['a', 'c']);
 	assert.deepEqual(filterByVisibility(models, { a: false, b: false, c: false }).map((m) => m.id), ['a', 'b', 'c']);
+});
+
+test('每个可编辑字段都是 volatile，否则设置页会显示 unavailable', async () => {
+	const { Config } = await import('../lib/schema.js');
+	// 复刻宿主 dsh-settings 的 volatileForm：只收 volatile 字段，且只对 object 递归。
+	const volatileForm = (schema) => {
+		if (schema.meta?.volatile) return true;
+		if (schema.type !== 'object') return false;
+		const kept = Object.entries(schema.dict ?? {}).filter(([, child]) => volatileForm(child));
+		return kept.length > 0;
+	};
+	assert.equal(volatileForm(Config), true, '顶层必须有至少一个 volatile 字段');
+	assert.equal(Config.dict.providers.type, 'object', 'providers 不能是 dict，否则 volatileForm 直接丢弃');
+	const profile = Config.dict.providers.dict.devin2api;
+	assert.equal(profile.type, 'object');
+	const missing = Object.entries(profile.dict ?? {})
+		.filter(([, child]) => child.meta?.volatile !== true)
+		.map(([key]) => key);
+	assert.deepEqual(missing, [], '这些字段缺少 .volatile()');
+});
+
+test('unwrapVolatile 解开 cell，普通值原样返回', () => {
+	const cell = (value) => ({ get: () => value });
+	assert.equal(unwrapVolatile(cell('http://x/v1')), 'http://x/v1');
+	assert.deepEqual(unwrapVolatile({ a: cell(1), b: { c: cell([2]) } }), { a: 1, b: { c: [2] } });
+	assert.deepEqual(unwrapVolatile({ plain: true }), { plain: true });
+	assert.equal(unwrapVolatile(null), null);
 });

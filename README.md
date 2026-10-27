@@ -91,6 +91,29 @@ curl -s http://127.0.0.1:18089/healthz
 模型的可编辑行（baseURL、密钥、图片开关）由 `registerConfigurableProviders` 提供，位于
 **设置 → 模型 → Devin2API**，不在插件自己的面板里重复一遍。
 
+## 配置 schema 的硬性要求
+
+DSH 的设置文档只收录**标了 `.volatile()` 的字段**：宿主 `dsh-settings` 的 `volatileForm()`
+会丢掉所有非 volatile 字段，一条都不剩时整个 namespace 就不出现在 `settings.describe` 里，
+客户端拿到的状态就是 `unavailable`——插件自己的面板和「模型」页都会变成只读。
+
+另外 `volatileForm()` 只在 `type === "object"` 时向下递归，所以中间的包装层必须是
+`z.object`，**不能是 `z.dict`**（dict 会被直接丢弃，哪怕叶子标了 volatile）。
+
+因此本插件的 schema 是：
+
+```js
+Config = z.object({
+  providers: z.object({ devin2api: profileSchema }),  // object 而不是 dict
+})
+// profileSchema 里每个字段都 .volatile()
+```
+
+代价是 volatile 字段在宿主侧不再是普通值，而是带 `get()` 的活值单元，
+适配器统一用 `unwrapVolatile()` 现读（见 `lib/index.js` 的 `get config()`），
+这样设置页改完立即生效，不需要重新挂载插件。`test/protocol.test.mjs` 里有守门测试，
+字段漏标 volatile 会直接失败。
+
 ## 模型开关
 
 面板里的模型列表来自网关的 `GET /v1/models`。每个模型一个开关，点一下**立即写入**
@@ -139,6 +162,12 @@ curl -s http://127.0.0.1:18089/healthz
 | 额度胶囊 | 有（Host remote） | 有（浏览器直连 + CORS） |
 | 图片 | 支持 | 支持当前轮 |
 | 实现规模 | 60k 行 + 构建链 | ~1.1k 行纯 ESM，无构建 |
+
+## 排障
+
+客户端异常会 POST 到网关的 `POST /__clientlog`，落盘在 `$TMPDIR/dsh-devin2api-client.log`
+（macOS 是 `/var/folders/.../T/`，不是 `/tmp`）。包括 `window.onerror`、
+`unhandledrejection` 和面板 React 错误边界捕获到的堆栈。
 
 ## 限制
 
