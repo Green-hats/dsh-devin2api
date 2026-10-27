@@ -75,6 +75,21 @@ curl -s http://127.0.0.1:18089/healthz
   `maxRequestImageBytes` 直接报 `IMAGE_BUDGET`，不发送截断的请求。
 - 需要宿主挂载附件服务（随附组合默认有 `@deepseek-ai/dsh-attachment-local`）。
 
+## 界面
+
+插件在客户端有两处 UI：
+
+| 位置 | 内容 |
+| --- | --- |
+| 对话输入框右侧胶囊 | `周 65%`，悬停显示套餐、今日/本周百分比与重置时间 |
+| 设置 → **Devin2API** | 用量面板：网关连接状态、额度进度条、下次重置、模型目录（共几个、几个支持图片），带「刷新」 |
+
+设置页这类目由 `settings.section` 插槽注册（与 `dsh-opencode-go` 同一机制）。面板通过
+`configForms` 读取 `providers.devin2api.baseURL`，所以在「模型」页改过地址后，面板会跟着走。
+
+模型的可编辑行（baseURL、密钥、图片开关）由 `registerConfigurableProviders` 提供，位于
+**设置 → 模型 → Devin2API**，不在插件自己的面板里重复一遍。
+
 ## 额度胶囊
 
 `conversation.input.right` 里一个只读胶囊，显示 `周 98%`，颜色随剩余额度变黄/变红；
@@ -83,10 +98,10 @@ curl -s http://127.0.0.1:18089/healthz
 数据来源是网关的 `GET /v1/quota`（devin-2api-lite 已实现，5 分钟服务端缓存）。浏览器
 直接请求该地址，因此：
 
-1. 网关需要是**带 `/v1/quota` 和 CORS 响应头**的 lite 版本（本仓库已加）。
+1. 网关需要是**只读端点开放 CORS** 的 lite 版本（`/healthz`、`/v1/models`、`/v1/quota`）。
 2. 网关的 `auth.api_key` 必须为空——浏览器端不携带密钥。开启鉴权后胶囊会隐藏，
    后续需要改成 Host 代理读取。
-3. 地址目前固定为 `http://127.0.0.1:18089/v1/quota`。
+3. 地址默认 `http://127.0.0.1:18089/v1`，可在「模型」设置页的 Devin2API 行里改。
 
 ## 与 dsh-opencode-go 的差异
 
@@ -94,7 +109,7 @@ curl -s http://127.0.0.1:18089/healthz
 | --- | --- | --- |
 | 协议 | OpenAI/Anthropic/Google SDK | 网关的 OpenAI Chat Completions |
 | 多账号容灾 | 支持 | 无 |
-| 用量看板（本地扫描） | 支持 | 无 |
+| 用量看板（本地扫描） | 支持（读本地日志） | 无（改为读网关额度） |
 | 额度胶囊 | 有（Host remote） | 有（浏览器直连 + CORS） |
 | 图片 | 支持 | 支持当前轮 |
 | 实现规模 | 60k 行 + 构建链 | ~1.1k 行纯 ESM，无构建 |
