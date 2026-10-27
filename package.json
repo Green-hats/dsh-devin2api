@@ -4,6 +4,24 @@
   "description": "Devin2API model provider for DeepSeek Harness",
   "type": "module",
   "license": "MIT",
+  "author": "Green-hats",
+  "homepage": "https://github.com/Green-hats/dsh-devin2api#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Green-hats/dsh-devin2api.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Green-hats/dsh-devin2api/issues"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "devin",
+    "devin-2api",
+    "llm",
+    "provider"
+  ],
   "main": "./lib/index.js",
   "exports": {
     ".": "./lib/index.js",
@@ -32,7 +50,11 @@
     }
   },
   "scripts": {
-    "test": "node --test test/*.test.mjs"
+    "test": "node --import ./test/register.mjs --test test/*.test.mjs",
+    "check": "node --check lib/index.js && node --check lib/client.js && node --check lib/protocol.js && node --check lib/catalog.js && node --check lib/schema.js"
+  },
+  "devDependencies": {
+    "@deepseek-ai/schemastery": "~3.18.5"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-llm": ">=0.1.5-rc.1",
