@@ -100,9 +100,9 @@ curl -s http://127.0.0.1:18089/healthz
 
 ## 界面
 
-<img src="docs/surfaces.zh-CN.png" alt="三个界面：Devin2API 设置页、Models 提供方行、输入区额度胶囊" width="100%">
+<img src="docs/settings.jpg" alt="Devin2API 设置页：网关状态、额度与模型目录" width="100%">
 
-_示意图，非截图；当前 UI 文案为中文。_
+_设置 → Devin2API 实际页面。_
 
 - **设置 → Devin2API** —— 网关状态、日/周额度、模型目录开关与刷新。
 - **设置 → 模型 → Devin2API** —— base URL、密钥、图片能力、模型发现。
@@ -178,7 +178,7 @@ npm run check                    # 对 lib/*.js 跑 node --check
 ```
 
 测试通过 resolve hook 把 `@deepseek-ai/dsh-llm` 指到 `test/fixtures/dsh-llm`，不装 DSH 也能跑。
-图片由 `python3 scripts/make-images.py` 生成（需要 `rsvg-convert` 与 Pillow）。CI 跑 Node 22/24。
+banner 与架构图由 `python3 scripts/make-images.py` 生成（需要 `rsvg-convert` 与 Pillow）；`docs/settings.jpg` 是实际截图。CI 跑 Node 22/24。
 
 ## 相关项目
 
@@ -189,4 +189,4 @@ npm run check                    # 对 lib/*.js 跑 node --check
 
 ## License
 
-[MIT](LICENSE) © 2026 Green-hats。Host 路径已在真实 lite 网关验证；UI 图片是示意图。
+[MIT](LICENSE) © 2026 Green-hats。Host 路径已在真实 lite 网关验证；设置页截图来自真实 profile。
