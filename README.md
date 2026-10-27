@@ -171,7 +171,7 @@ Config = z.object({
 
 ## 限制
 
-- **配置热更新**：Models 页保存后如果没生效，重载插件或重启 profile。
+- **`enabled` 需要重载**：`enabled` 只在插件挂载时判断，运行中改成 `false` 不会注销已注册的路由；重载插件或重启 profile 后生效。其余字段（`baseURL`、`apiKey`、`images`、`maxTokens`、`modelVisibility` 等）都是 volatile，保存即生效。
 - **单网关**：一个插件实例只服务一个 `baseURL`。
 - **无 replay state**：思考签名不回传，多轮只回放文本与工具调用。
 - **额度胶囊未鉴权**：见上节。

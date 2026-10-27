@@ -95,3 +95,33 @@ test('enabled=true 时注册一个路由', needsHost, () => {
 	assert.equal(registered.length, 1);
 	assert.deepEqual(registered[0][0], ['devin2api']);
 });
+
+test('apply 保留 volatile 引用：挂载后的设置变更仍能到达适配器', needsHost, () => {
+	let base = 'http://a.example/v1';
+	const visibility = {};
+	const registered = [];
+	const ctx = {
+		logger: { info() {}, warn() {} },
+		llm: {
+			registerAdapter: (...args) => registered.push(args[1]),
+			registerConfigurableProviders() {},
+			registerModelDiscovery() {},
+		},
+		get: () => undefined,
+	};
+	apply(ctx, {
+		providers: {
+			devin2api: {
+				enabled: { get: () => true },
+				baseURL: { get: () => base },
+				modelVisibility: { get: () => visibility },
+			},
+		},
+	});
+	const adapter = registered[0];
+	assert.equal(adapter.config.baseURL, 'http://a.example/v1', '挂载时读到初始值');
+	base = 'http://b.example/v1';
+	visibility.beta = false;
+	assert.equal(adapter.config.baseURL, 'http://b.example/v1', '设置变更应立即生效');
+	assert.deepEqual(adapter.config.modelVisibility, { beta: false });
+});
