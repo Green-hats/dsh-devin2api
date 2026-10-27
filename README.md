@@ -1,40 +1,104 @@
+<div align="center">
+
 # dsh-devin2api
 
-把 [devin-2api](https://github.com/Green-hats/devin-2api-lite) 网关接入 DeepSeek Harness 的**模型提供方插件**。
+**A model-provider plugin that brings [devin-2api-lite](https://github.com/Green-hats/devin-2api-lite) into [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).**
 
-它在 DSH 里注册 `devin2api` 提供方：模型目录来自网关的 `GET /v1/models`，请求走 OpenAI
-Chat Completions 流式协议，响应翻译成 DSH 的 `StreamChunk`。装好后 `/model` 里会多出
-**Devin2API** 分组；Models 设置页能编辑这条路由；输入区右侧有额度胶囊。
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.1--rc.3-4d6bfe?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
+[![Gateway](https://img.shields.io/badge/gateway-devin--2api--lite-2ea44f?style=flat-square)](https://github.com/Green-hats/devin-2api-lite)
+[![Node](https://img.shields.io/badge/node-%5E22.19%20%7C%7C%20%3E%3D24-339933?style=flat-square&logo=node.js&logoColor=white)](package.json)
+[![License](https://img.shields.io/badge/license-MIT-2ea44f?style=flat-square)](LICENSE)
+[![CI](https://github.com/Green-hats/dsh-devin2api/actions/workflows/ci.yml/badge.svg)](https://github.com/Green-hats/dsh-devin2api/actions/workflows/ci.yml)
 
-## 能力
+English | [中文](README.zh-CN.md)
 
-| 能力 | 状态 |
+[Why](#why) · [Quick start](#quick-start) · [Configuration](#configuration) · [Web UI](#web-ui) · [Protocol](#protocol-mapping) · [Troubleshooting](#troubleshooting)
+
+</div>
+
+---
+
+> [!IMPORTANT]
+> This plugin is the **client half**. [devin-2api-lite](https://github.com/Green-hats/devin-2api-lite) owns the Devin
+> protocol, the model catalog, the quota snapshot and your upstream token. The plugin only adapts DeepSeek Harness'
+> model API to the gateway's OpenAI-compatible Chat Completions endpoint.
+>
+> Start the gateway first: the plugin advertises no models and cannot stream without it.
+
+`dsh-devin2api` registers the provider route **`devin2api`** inside DeepSeek Harness. It reads the gateway catalog from
+`GET /v1/models`, streams `POST /v1/chat/completions` as DSH `StreamChunk`s, and adds a settings page, per-model
+visibility switches, and a daily/weekly quota pill to the Web UI.
+
+```
+DSH agent ──StreamChunk──► dsh-devin2api ──HTTP + SSE──► devin-2api-lite ──Connect RPC──► Devin
+             ◄── OpenAI Chat Completions ─────────────┘
+```
+
+No build step. No runtime dependencies beyond the packages DSH already provides.
+
+## Why
+
+| Area | What you get |
 | --- | --- |
-| 动态模型目录（5 分钟缓存、失败回退） | ✅ |
-| 文本 / 思考流 / 工具调用 | ✅ |
-| 推理档位（映射 `reasoning_efforts`） | ✅ |
-| 模型白名单（`models`） | ✅ |
-| 图片输入（当前轮，base64 data URL） | ✅ |
-| Models 设置页可编辑行 + 模型发现 | ⚠️ 已实现，未在真实 DSH 实例中验证 |
-| 额度胶囊（输入区右侧） | ⚠️ 已实现，同上 |
-| 多账号容灾 / 用量看板 | ❌ 未做 |
+| **Catalog** | `/v1/models` cached for `refreshMinutes`, single-flight, graceful fallback to a configured model list |
+| **Chat** | Streaming text, `reasoning_content`, tool calls, usage, mapped finish reasons |
+| **Reasoning** | Per-model efforts from `reasoning_efforts`; `high` is the default when advertised |
+| **Images** | Current-turn images as base64 data URLs, resized and byte-capped; history becomes placeholder text |
+| **Control** | `models` allowlist and per-model switches (`modelVisibility`) with an all-off safety fallback |
+| **Settings** | Editable row in **Settings → Models** and a dedicated **Settings → Devin2API** page |
+| **Quota** | Daily/weekly remaining percentage in the composer; click to bypass the gateway cache |
+| **Ops** | Stable error codes for auth, quota, timeout, aborts and image budgets; optional local debug log |
 
-## 安装
+### Gateway endpoints this plugin uses
 
-```sh
-dsh plugin --profile desktop add /绝对路径/dsh-devin2api
-```
+| Endpoint | Caller | Credential |
+| --- | --- | --- |
+| `GET /healthz` | settings panel | none |
+| `GET /v1/models` | catalog, visibility, model discovery | Host: `Bearer`; browser: no header |
+| `GET /v1/quota` | quota pill and panel | browser: no header |
+| `POST /v1/chat/completions` | every model call | `Bearer` |
+| `POST /__clientlog` | optional diagnostics | none; local only |
 
-重启 profile 后生效。装好后先确认网关在跑：
+The browser reads the three GET endpoints directly (and the gateway must allow CORS on them, as lite does). It never
+carries the API key — see [Web UI](#web-ui).
 
-```sh
+## Requirements
+
+- **DeepSeek Harness** `0.2.x` (verified on `0.2.1-rc.3`). Peer packages:
+  `@deepseek-ai/dsh-llm >= 0.1.5-rc.1`, `@deepseek-ai/schemastery >= 3.18.0`.
+- **Node.js** `^22.19.0 || >=24.0.0`.
+- **devin-2api-lite** with `/v1/quota` and read-only CORS enabled (both are in current lite releases).
+- The Host `attachments` service (present in the default composition) for image input.
+- Gateway reachable from the Host **and** from the browser that renders the settings page and quota pill.
+
+## Quick start
+
+### 1. Start the gateway
+
+```bash
+git clone https://github.com/Green-hats/devin-2api-lite.git
+cd devin-2api-lite
+cp config.example.yaml config.yaml     # set devin.token
+go run ./cmd/devin-2api -config config.yaml
+
 curl -s http://127.0.0.1:18089/healthz
+# {"status":"ok"}
 ```
 
-## 配置
+See the [lite quick start](https://github.com/Green-hats/devin-2api-lite#quick-start) for tokens, Docker and
+configuration.
 
-配置在 profile 的 `cordis.patch.yml` 里。结构是 `providers` 字典——这样 Models 页能按
-`settingsPath: ["providers", "devin2api"]` 定位并编辑这一行。
+### 2. Install the plugin
+
+```bash
+# from GitHub
+dsh plugin --profile desktop add github:Green-hats/dsh-devin2api
+
+# or from a local checkout
+dsh plugin --profile desktop add /absolute/path/to/dsh-devin2api
+```
+
+Restart the profile (or reload the plugin) after installing. The bundle patch inserts this row:
 
 ```yaml
 - id: devin2api
@@ -47,153 +111,294 @@ curl -s http://127.0.0.1:18089/healthz
         apiKeyEnv: DEVIN2API_API_KEY
         enabled: true
         images: true
-        models: []          # 空 = 全部；非空时是白名单
+        models: []
 ```
 
-| 字段 | 默认值 | 说明 |
+### 3. Point it at the gateway
+
+Either edit the row in **Settings → Models → Devin2API**, or override the same `id` in
+`$DSH_HOME/profiles/<profile>/cordis.patch.yml`:
+
+```yaml
+- id: devin2api
+  config:
+    providers:
+      devin2api:
+        baseURL: http://127.0.0.1:18089/v1
+        apiKeyEnv: DEVIN2API_API_KEY
+```
+
+### 4. Pick a model
+
+Open `/model` in DSH and choose **Devin2API**. The catalog is the gateway's `/v1/models`; a model switch or a
+draft endpoint change is reflected by the provider directory and model discovery.
+
+### 5. Verify
+
+```bash
+curl -s http://127.0.0.1:18089/v1/models | head -c 200
+curl -s http://127.0.0.1:18089/v1/quota
+```
+
+## Configuration
+
+All plugin configuration lives under `providers.devin2api` so that the Models page can address one provider object
+(`settingsPath: ["providers", "devin2api"]`).
+
+```yaml
+- id: devin2api
+  name: dsh-devin2api
+  config:
+    providers:
+      devin2api:
+        displayName: Devin2API
+        baseURL: http://127.0.0.1:18089/v1
+        apiKeyEnv: DEVIN2API_API_KEY
+        apiKey: ''
+        enabled: true
+        models: []
+        modelVisibility: {}
+        images: true
+        contextWindow: 262144
+        maxTokens: 128000
+        refreshMinutes: 5
+        requestTimeoutMs: 300000
+        imagePixelBudget: 4194304
+        imageMaxBytes: 1048576
+        maxRequestImageBytes: 20971520
+```
+
+| Field | Default | Notes |
 | --- | --- | --- |
-| `displayName` | `Devin2API` | 选择器里的分组名 |
-| `baseURL` | `http://127.0.0.1:18089/v1` | 网关地址，末尾斜杠可有可无 |
-| `apiKey` / `apiKeyEnv` | 空 / `DEVIN2API_API_KEY` | 直写或读环境变量；网关未开鉴权可留空 |
-| `enabled` | `true` | 关闭后不注册路由 |
-| `models` | `[]` | `[{ id, name }]` 或字符串数组；非空即白名单 |
-| `images` | `true` | 是否向模型声明图片输入 |
-| `contextWindow` / `maxTokens` | `262144` / `128000` | 网关不报这两个值，由插件补 |
-| `refreshMinutes` | `5` | 目录缓存时长 |
-| `requestTimeoutMs` | `300000` | 单次请求总超时 |
-| `imagePixelBudget` / `imageMaxBytes` | `4194304` / `1048576` | 单图缩放目标 |
-| `maxRequestImageBytes` | `20971520` | 单次请求图片总预算（base64 长度） |
+| `displayName` | `Devin2API` | Provider name in the model selector and provider list |
+| `baseURL` | `http://127.0.0.1:18089/v1` | Gateway root including `/v1`; trailing slashes are tolerated |
+| `apiKey` | `''` | Direct key; `role('secret')` so the settings document redacts it. Prefer `apiKeyEnv` |
+| `apiKeyEnv` | `DEVIN2API_API_KEY` | Environment variable read at request time when `apiKey` is empty |
+| `enabled` | `true` | Mount-time gate: changing it requires reloading the plugin or restarting the profile |
+| `models` | `[]` | Empty advertises every gateway model. Non-empty is an allowlist of ids or `{ id, name }` objects |
+| `modelVisibility` | `{}` | Per-model switch written by the settings page; `false` hides a model (all-off falls back to the full catalog) |
+| `images` | `true` | Declares image input for vision-capable models; `false` forces text-only projection |
+| `contextWindow` | `262144` | Reported to DSH because `/v1/models` does not disclose limits |
+| `maxTokens` | `128000` | Default output cap sent as `max_tokens` |
+| `refreshMinutes` | `5` | Catalog cache TTL (minimum 1 minute) |
+| `requestTimeoutMs` | `300000` | Per-request timeout, including the stream |
+| `imagePixelBudget` | `4194304` | Pixel budget used to resize an image before encoding |
+| `imageMaxBytes` | `1048576` | Per-image byte cap after encoding |
+| `maxRequestImageBytes` | `20971520` | Total base64 data-URL characters allowed in one request |
 
-## 图片
+`DEVIN2API_BASE_URL` is reported to the Models page as the provider's endpoint environment hint; the adapter itself
+resolves `baseURL` from the config.
 
-- 只对**当前轮**读取附件：当前轮从最后一条 user 消息开始，从它（含其后的 tool 结果）取图；
-  同一轮里的工具调用不会让图片掉线。更早的图片替换为 `[Image omitted from history]`
-  ——网关本身也只接受当前轮图片，这样还能避免把整个会话的历史图重复塞进请求体。
-- `supports_images=false` 的模型不声明图片能力，DSH 会在请求前把图片换成占位文本，
-  不会打到网关上换一个 400。
-- 单图按 `imagePixelBudget` / `imageMaxBytes` 缩放后才编码；整次请求超过
-  `maxRequestImageBytes` 直接报 `IMAGE_BUDGET`，不发送截断的请求。
-- 需要宿主挂载附件服务（随附组合默认有 `@deepseek-ai/dsh-attachment-local`）。
+### Hot updates
 
-## 界面
+Every editable field except `enabled` is declared `.volatile()`, so the settings page writes take effect on the running
+adapter without a remount. `enabled` is evaluated once when the plugin mounts; changing it from `false` to `true` (or
+the reverse) requires a plugin reload. See [Known limitations](#known-limitations).
 
-插件在客户端有两处 UI：
+## Web UI
 
-| 位置 | 内容 |
+**Settings → Devin2API** (own page):
+
+- gateway connection state and resolved root URL;
+- today's and this week's remaining quota, reset times and stale-snapshot marker;
+- the model catalog with search, one switch per model, **all on** / **all off**, and refresh.
+
+**Settings → Models → Devin2API** (provider card):
+
+- editable `baseURL`, API key, image capability and model discovery. The row lives in the shared Models page; the
+  plugin does not duplicate it in its own panel.
+
+**Composer quota pill** (`conversation.input.right`):
+
+- renders only while the session's selected provider is `devin2api`;
+- polls `GET /v1/quota` every 60 seconds and is hidden when the endpoint is unavailable;
+- click to request `?fresh=1` (lite bypasses its 5-minute cache);
+- shows `日 71% │ 周 65%` today; UI copy is Chinese-only for now (see [Known limitations](#known-limitations)).
+
+### Browser and credentials
+
+The panel and pill run in the renderer process and call the gateway directly. They send **no** `Authorization`
+header, so with `auth.api_key` set on the gateway:
+
+- chat still works (the Host sends `Bearer`);
+- `GET /v1/models` and `GET /v1/quota` return `401`, so the panel shows no catalog and the pill disappears.
+
+Keep `auth.api_key` empty for a local gateway, or terminate CORS/auth in a proxy you control. `GET /healthz` and
+`POST /__clientlog` are public in lite; keep the gateway bound to loopback.
+
+## Model catalog
+
+- The catalog is fetched with `GET /v1/models`, cached for `refreshMinutes`, and refreshed in a single flight.
+- On a transient failure the adapter serves the last snapshot; without a snapshot it falls back to `models`, or reports
+  `EMPTY_CATALOG` when both are empty.
+- `models` is an allowlist. If none of its ids exist in the gateway catalog, the adapter warns and advertises the whole
+  catalog instead of silently hiding everything.
+- `modelVisibility` is applied after the allowlist. If every remaining model is switched off, the full remaining list is
+  advertised so the selector never empties; the panel explains this fallback.
+
+`GET /v1/models` does not disclose context windows or output limits, so `contextWindow` / `maxTokens` are per-provider
+configuration values.
+
+## Images
+
+- Only the **current turn** is uploaded. The boundary is the last `user` message: images in that message and in tool
+  results after it stay; earlier images become `[Image omitted from history]`. This keeps vision working across tool
+  loops without re-uploading the whole conversation.
+- Each image is resized within `imagePixelBudget` and capped at `imageMaxBytes`; a request whose data URLs exceed
+  `maxRequestImageBytes` fails with `IMAGE_BUDGET` instead of sending a truncated body.
+- `images: false`, a model with `supports_images: false`, or a missing `attachments` service makes DSH project images
+  to text before dispatch; the gateway never receives an unsupported image.
+- Requires the Host `attachments` service (present in the default composition).
+
+## Protocol mapping
+
+### Request
+
+| DSH input | OpenAI Chat Completions request |
 | --- | --- |
-| 对话输入框右侧胶囊 | `日 71% │ 周 65%`，仅当会话选中 Devin2API 模型时出现；悬停显示模型名、套餐、两个重置时间；点击立即刷新 |
-| 设置 → **Devin2API** | 用量面板：网关连接状态、今日/本周进度条与各自重置时间，带「刷新」 |
-| 设置 → **Devin2API** → 模型目录 | 每个模型一行开关，可搜索、可全开/全关；关掉的模型不出现在选择器里 |
+| `options.system` + leading `system` messages | one `system` message |
+| `developer` message | `system` message |
+| mid-history `system` message | `system` message (preserved, not dropped) |
+| user text / images | string, or `[{ type: "text" }, { type: "image_url", image_url: { url } }]` |
+| assistant text / tool calls | `{ role: "assistant", content, tool_calls }` with JSON-string arguments |
+| tool result | `{ role: "tool", tool_call_id, content }` |
+| `tools` | OpenAI `function` tools; `deferLoading` entries are skipped |
+| `maxTokens` | `max_tokens` |
+| `reasoningEffort` | `reasoning_effort` |
+| `temperature` / `stop` | `temperature` / `stop` |
+| — | `stream: true`, `stream_options: { include_usage: true }` |
 
-设置页这类目由 `settings.section` 插槽注册（与 `dsh-opencode-go` 同一机制）。面板通过
-`configForms` 读取 `providers.devin2api.baseURL`，所以在「模型」页改过地址后，面板会跟着走。
+> [!NOTE]
+> Current lite releases fix sampling (`max_tokens=128000`, `temperature=1`, `top_p=0.95`, `top_k=40`) and ignore
+> client values; this plugin still forwards them for gateways that honor them. See
+> [lite caveats](https://github.com/Green-hats/devin-2api-lite#caveats).
 
-模型的可编辑行（baseURL、密钥、图片开关）由 `registerConfigurableProviders` 提供，位于
-**设置 → 模型 → Devin2API**，不在插件自己的面板里重复一遍。
+### Stream
 
-## 配置 schema 的硬性要求
+| DSH chunk | Upstream source |
+| --- | --- |
+| `block-start` / `block-end` | one per reasoning, text or tool-call block |
+| `reasoning-delta` | `choices[0].delta.reasoning_content` |
+| `text-delta` | `choices[0].delta.content` |
+| `tool-call-delta` | `choices[0].delta.tool_calls[].function.arguments` |
+| `usage` | final `usage` (`prompt_tokens`, `completion_tokens`, `total_tokens`, cached tokens) |
+| `finish` | `finish_reason`: `length` → `max-tokens`, `tool_calls` / `function_call` → `tool-calls`, otherwise `stop` |
 
-DSH 的设置文档只收录**标了 `.volatile()` 的字段**：宿主 `dsh-settings` 的 `volatileForm()`
-会丢掉所有非 volatile 字段，一条都不剩时整个 namespace 就不出现在 `settings.describe` 里，
-客户端拿到的状态就是 `unavailable`——插件自己的面板和「模型」页都会变成只读。
+### Error codes
 
-另外 `volatileForm()` 只在 `type === "object"` 时向下递归，所以中间的包装层必须是
-`z.object`，**不能是 `z.dict`**（dict 会被直接丢弃，哪怕叶子标了 volatile）。
+| Code | Meaning |
+| --- | --- |
+| `AUTH` | `401` / `403` from the gateway |
+| `QUOTA` | `429` |
+| `INVALID_REQUEST` | `400` / `413` / `422` |
+| `TIMEOUT` | `504` or the per-request timeout fired |
+| `ABORTED` | The caller cancelled the stream or request |
+| `TRANSPORT` | Gateway unreachable, connection dropped mid-stream, or unreadable response |
+| `SERVER` | Any other HTTP status |
+| `IMAGE_BUDGET` | The request's images exceed `maxRequestImageBytes` |
+| `IMAGE_UNAVAILABLE` | An attachment could not be read |
+| `EMPTY_CATALOG` | `/v1/models` returned no usable entries |
+| `EMPTY_RESPONSE` | The stream ended without content or a finish reason |
+| `UPSTREAM_ERROR` | The gateway sent an error chunk |
 
-因此本插件的 schema 是：
+Cancellation is reported as `ABORTED` (not `TRANSPORT`), so the harness can distinguish a user stop from a failure.
 
-```js
-Config = z.object({
-  providers: z.object({ devin2api: profileSchema }),  // object 而不是 dict
-})
-// profileSchema 里每个字段都 .volatile()
+## Architecture
+
+| File | Role |
+| --- | --- |
+| `lib/index.js` | Host adapter: registration, catalog, stream, images, discovery, settings policy |
+| `lib/protocol.js` | Message/tool/SSE translation; no DSH imports |
+| `lib/catalog.js` | Catalog and quota parsing, visibility, error mapping, volatile unwrapping |
+| `lib/schema.js` | Config schema; every editable field is `.volatile()` |
+| `lib/client.js` | Web UI: settings page, catalog switches, quota pill |
+| `cordis.patch.yml` | Profile patch inserted by the bundle |
+| `test/` | `node:test` suite; `test/register.mjs` + `test/fixtures/dsh-llm` make it runnable outside DSH |
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| `cannot reach the gateway` | `curl /healthz`, `baseURL`, firewall; the Host must reach it too |
+| `AUTH` on chat | `apiKey` / `apiKeyEnv`; lite's `auth.api_key` must match |
+| Empty model selector | `curl /v1/models`; set `models` as a fallback; reload the plugin |
+| Images become placeholder text | Expected for history. Check `images`, `supports_images`, `attachments`, and the image budgets |
+| Settings page says unavailable | The namespace needs volatile fields; check the Host log and `POST /__clientlog` |
+| Model switches do nothing | Settings are read-only, or every model is off and the host falls back to the full catalog |
+| Quota pill missing | Session is not on a `devin2api` model; gateway down; CORS blocked; `auth.api_key` set |
+| Client render errors | `POST /__clientlog`; lite appends browser and Host reports to `$TMPDIR/dsh-devin2api-client.log` |
+
+To remove the plugin, remove the bundle from the profile (`dsh plugin --profile desktop remove dsh-devin2api`) and
+restart; the inserted row and its settings go with it.
+
+## Known limitations
+
+- **No replay state.** Reasoning text is not sent back as provider state; multi-turn requests replay visible text and
+  tool calls only.
+- **One gateway per plugin instance.** A second endpoint needs a second plugin instance and provider route.
+- **`enabled` requires a reload.** The route is registered at mount time.
+- **The browser UI is unauthenticated.** The panel and pill call the gateway without an API key; use a loopback
+  gateway with `auth.api_key` unset.
+- **No multi-account failover or local usage analytics.** Those are the gateway's job (or a future plugin surface).
+- **Chinese-only UI copy.** The settings page and pill are not yet wired to the Client locale service.
+- **Sampling is gateway-owned.** Current lite ignores client `max_tokens` / `temperature` / `stop`; see its caveats.
+- **Per-provider limits.** `/v1/models` does not disclose context windows, so `contextWindow` and `maxTokens` are
+  configured, not discovered.
+
+## Compared with dsh-opencode-go
+
+| | `dsh-opencode-go` | `dsh-devin2api` |
+| --- | --- | --- |
+| Protocol | OpenAI / Anthropic / Google SDK | OpenAI Chat Completions |
+| Multi-account failover | Yes | No |
+| Usage dashboard | Local log scan | Gateway `/v1/quota` |
+| Quota pill | Host remote | Browser direct + CORS |
+| Images | Yes | Current turn |
+| Footprint | ~60k lines + build | ~2.1k lines, dependency-free ESM, no build |
+
+## Development
+
+```bash
+npm install --legacy-peer-deps   # installs the schemastery peer used by the schema tests
+npm test                         # node --test, 30 tests
+npm run check                    # node --check for every lib/*.js
 ```
 
-代价是 volatile 字段在宿主侧不再是普通值，而是带 `get()` 的活值单元，
-适配器统一用 `unwrapVolatile()` 现读（见 `lib/index.js` 的 `get config()`），
-这样设置页改完立即生效，不需要重新挂载插件。`test/protocol.test.mjs` 里有守门测试，
-字段漏标 volatile 会直接失败。
+`--legacy-peer-deps` is required because the published `@deepseek-ai/dsh-llm` is older than the version DSH ships; the
+test loader maps that specifier to `test/fixtures/dsh-llm/index.js` so the suite runs without a DSH installation.
+`schemastery` is a real dev dependency.
 
-## 模型开关
+Layout:
 
-面板里的模型列表来自网关的 `GET /v1/models`。每个模型一个开关，点一下**立即写入**
-`providers.devin2api.modelVisibility`（`{ "模型 id": false }`），不需要点保存——与
-`dsh-opencode-go` 的行为一致。宿主侧 `filterByVisibility` 把 `false` 的模型从
-`listModels` 和模型发现里都去掉，所以聊天里的模型选择器会立刻少掉这些条目。
-
-两个兜底：
-
-- 字典里没有的 id 视为开启（默认全开），所以新模型上线不会被默认隐藏。
-- 全部关掉时退回完整目录并打一条 warn——避免手滑把选择器清空。
-
-## 额度胶囊
-
-`conversation.input.right` 里一个只读胶囊，同时显示当日和本周剩余：`日 71% │ 周 65%`，
-每段有自己的状态点（绿 → 黄 ≤30% → 红 ≤10%）。悬停显示模型名、套餐、两个重置时间。
-
-**刷新频率**：
-
-| 层 | 频率 | 说明 |
-| --- | --- | --- |
-| 胶囊轮询 | 60 秒 | 选中 devin2api 模型时才轮询，换模型即停 |
-| 网关缓存 | 5 分钟 | 上游响应约 130 KiB，不每次请求都拉 |
-| 点击胶囊 | 立即 | 带 `?fresh=1` 跳过网关缓存，直接问一次上游 |
-| 刷新失败后重试 | 30 秒 | 网关侧失败重试间隔，期间返回上一次快照并标 stale |
-
-所以不点的情况下，数字最多滞后约 5 分钟；点一下就是新数据。
-
-**只在当前会话选中 `devin2api` 的模型时出现**：胶囊通过 `modelDirectories` 读当前会话的
-`current.provider`，不是这个 provider 就立刻消失，同时停止轮询（换成别的模型后不再发请求）。
-
-数据来源是网关的 `GET /v1/quota`（devin-2api-lite 已实现）。浏览器直接请求该地址，因此：
-
-1. 网关需要是**只读端点开放 CORS** 的 lite 版本（`/healthz`、`/v1/models`、`/v1/quota`）。
-2. 网关的 `auth.api_key` 必须为空——浏览器端不携带密钥。开启鉴权后胶囊会隐藏，
-   后续需要改成 Host 代理读取。
-3. 地址默认 `http://127.0.0.1:18089/v1`，可在「模型」设置页的 Devin2API 行里改。
-
-## 与 dsh-opencode-go 的差异
-
-| | dsh-opencode-go | 本插件 |
-| --- | --- | --- |
-| 协议 | OpenAI/Anthropic/Google SDK | 网关的 OpenAI Chat Completions |
-| 多账号容灾 | 支持 | 无 |
-| 用量看板（本地扫描） | 支持（读本地日志） | 无（改为读网关额度） |
-| 额度胶囊 | 有（Host remote） | 有（浏览器直连 + CORS） |
-| 图片 | 支持 | 支持当前轮 |
-| 实现规模 | 60k 行 + 构建链 | ~1.1k 行纯 ESM，无构建 |
-
-## 排障
-
-客户端异常会 POST 到网关的 `POST /__clientlog`，落盘在 `$TMPDIR/dsh-devin2api-client.log`
-（macOS 是 `/var/folders/.../T/`，不是 `/tmp`）。包括 `window.onerror`、
-`unhandledrejection` 和面板 React 错误边界捕获到的堆栈。
-
-## 限制
-
-- **`enabled` 需要重载**：`enabled` 只在插件挂载时判断，运行中改成 `false` 不会注销已注册的路由；重载插件或重启 profile 后生效。其余字段（`baseURL`、`apiKey`、`images`、`maxTokens`、`modelVisibility` 等）都是 volatile，保存即生效。
-- **单网关**：一个插件实例只服务一个 `baseURL`。
-- **无 replay state**：思考签名不回传，多轮只回放文本与工具调用。
-- **额度胶囊未鉴权**：见上节。
-
-## 开发
-
-```sh
-node --test test/*.test.mjs     # 协议/目录层，纯 Node，不需要 DSH
-node --check lib/index.js lib/client.js
+```
+lib/index.js       Host adapter
+lib/protocol.js    pure translation layer
+lib/catalog.js     pure parsing layer
+lib/schema.js      Config schema
+lib/client.js      Web client module
+test/              node:test suites + DSH stub
+.github/workflows  Node 22/24 CI
 ```
 
-`lib/protocol.js`、`lib/catalog.js` 不导入 DSH 模块；`lib/index.js` 需要 DSH 运行时；
-`lib/client.js` 是 `window.__ModuleLoader__.load` 形式的浏览器模块，无构建步骤。
+Adding a configuration field: add it to `profileSchema` with `.volatile()`, add its default to `PROFILE_DEFAULTS`,
+extend the volatile-form guard in `test/protocol.test.mjs`, and update both READMEs. Settings writes must remain live
+on the running adapter; do not unwrap the config object in `apply`.
 
-### 已验证
+## Related
 
-- 单元测试 30 项（消息/工具/图片转换、SSE 翻译、错误分片、目录、额度、错误码、
-  volatile 热更新、取消语义、设置面板状态）。
-- 真实网关（lite + `/v1/quota`）：122 个模型；文本流式 `pong`；`get_weather` 工具调用
-  返回 `{"city":"Paris"}`；白名单生效；网关不可达时回退配置。
-- 图片：用假附件服务跑通了「历史图 → 占位文本、当前轮图片 → `image_url` data URL」，
-  并验证同一轮工具调用后图片仍会上传。
-- 配置：用真实 schemastery + Loader 的 volatile 更新路径验证了设置改动能到达适配器。
-- **未验证**：Models 页那一行、额度胶囊在真实 DSH 里的渲染——沙箱无法写入
-  `~/.dsh` 安装插件。装上后如有报错，把信息发我按真实 API 修。
+- [**devin-2api-lite**](https://github.com/Green-hats/devin-2api-lite) — the gateway this plugin talks to
+  ([中文](https://github.com/Green-hats/devin-2api-lite/blob/main/README.zh-CN.md)). It owns the Devin protocol, the
+  catalog, `/v1/quota` and `/__clientlog`.
+- [**DeepSeek Harness**](https://github.com/deepseek-ai/deepseek-harness) — the host application and its plugin API.
+- [**leookun/devin-2api**](https://github.com/leookun/devin-2api) — the original protocol research lite is derived
+  from (MIT).
+
+## Status
+
+The Host path (catalog, streaming, tools, images, settings writes) is covered by the test suite and has been exercised
+against a live lite gateway. The Settings models row and the quota pill are implemented against the current Client
+APIs and register live; their visual rendering has not been verified on every DSH theme and locale.
+
+## License
+
+[MIT](LICENSE) © 2026 Green-hats.
