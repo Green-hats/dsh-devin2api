@@ -361,36 +361,42 @@ def ui_showcase(lang: str) -> None:
     )
 
     # pill close-up
-    _card(draw, (1088, 450, 1544, 770))
+    _card(draw, (1088, 450, 1544, 700))
     draw.text((1112, 476), "额度胶囊" if zh else "Quota pill", font=_ui_font(zh, 20, True), fill=UI_TEXT)
     draw.text((1112, 506), "日 / 周剩余额度" if zh else "daily / weekly remaining", font=_ui_font(zh, 12), fill=UI_DIM)
     draw.line((1112, 530, 1520, 530), fill=(27, 41, 64, 255))
     source = Image.open(DOCS / "composer.png")
-    pill = source.crop((1020, 158, 1310, 232))
+    pill = source.crop((1034, 138, 1306, 192))
     pill = pill.resize((408, round(408 * pill.height / pill.width)), Image.LANCZOS)
     _paste_rounded(canvas, pill, (1112, 546), 8)
-    draw.text((1112, 670), "日 71% │ 周 65%", font=_ui_font(True, 17, True), fill=UI_GREEN)
     draw.text(
-        (1112, 696),
-        "点击刷新，跳过网关 5 分钟缓存" if zh else "click to refresh, bypassing the gateway cache",
+        (1112, 646),
+        "日 / 周剩余额度 · 点击刷新" if zh else "daily / weekly remaining · click to refresh",
         font=_ui_font(zh, 12),
         fill=UI_MUTED,
     )
+    draw.text(
+        (1112, 672),
+        "跳过网关 5 分钟缓存" if zh else "bypasses the gateway's 5-minute cache",
+        font=_ui_font(zh, 12),
+        fill=UI_DIM,
+    )
 
     # status summary
-    _card(draw, (1088, 790, 1544, 1000))
-    draw.text((1112, 816), "一眼看" if zh else "At a glance", font=_ui_font(zh, 20, True), fill=UI_TEXT)
+    _card(draw, (1088, 720, 1544, 1000))
+    draw.text((1112, 746), "一眼看" if zh else "At a glance", font=_ui_font(zh, 20, True), fill=UI_TEXT)
     rows = [
         ("网关 · 127.0.0.1:18089" if zh else "gateway · 127.0.0.1:18089"),
         ("目录 · 122 个模型 · 已启用 5" if zh else "catalog · 122 models · 5 enabled"),
         ("设置 · 即时生效（volatile）" if zh else "settings · live (volatile)"),
         ("浏览器 · 只读端点不带密钥" if zh else "browser · CORS, no API key"),
+        ("路由 · devin2api" if zh else "route · devin2api"),
     ]
-    y = 852
+    y = 782
     for row in rows:
         draw.ellipse((1112, y + 6, 1118, y + 12), fill=UI_GREEN)
         draw.text((1126, y), row, font=_ui_font(zh, 13), fill=UI_MUTED)
-        y += 26
+        y += 28
 
     draw.text((64, 1038), "Devin2API · DeepSeek Harness", font=_ui_font(zh, 12), fill=UI_DIM)
     draw.text(
