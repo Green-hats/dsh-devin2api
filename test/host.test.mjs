@@ -231,3 +231,9 @@ test('模型发现优先使用请求里的临时密钥', needsHost, async () => 
 		globalThis.fetch = originalFetch;
 	}
 });
+
+test('providerInfo 使用配置里的 displayName', needsHost, () => {
+	const adapter = new DevinAdapter({ displayName: cell('我的 Devin') }, console, () => undefined);
+	assert.deepEqual(adapter.providerInfo('devin2api'), { id: 'devin2api', name: '我的 Devin' });
+	assert.equal(new DevinAdapter({}, console, () => undefined).providerInfo('devin2api').name, 'Devin2API');
+});
