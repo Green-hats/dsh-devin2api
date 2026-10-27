@@ -346,17 +346,6 @@ restart; the inserted row and its settings go with it.
 - **Per-provider limits.** `/v1/models` does not disclose context windows, so `contextWindow` and `maxTokens` are
   configured, not discovered.
 
-## Compared with dsh-opencode-go
-
-| | `dsh-opencode-go` | `dsh-devin2api` |
-| --- | --- | --- |
-| Protocol | OpenAI / Anthropic / Google SDK | OpenAI Chat Completions |
-| Multi-account failover | Yes | No |
-| Usage dashboard | Local log scan | Gateway `/v1/quota` |
-| Quota pill | Host remote | Browser direct + CORS |
-| Images | Yes | Current turn |
-| Footprint | ~60k lines + build | ~2.1k lines, dependency-free ESM, no build |
-
 ## Development
 
 ```bash

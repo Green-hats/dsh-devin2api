@@ -331,17 +331,6 @@ _示意图，非截图；胶囊文案当前为中文。_
 - **采样由网关决定**：当前 lite 会忽略客户端的 `max_tokens` / `temperature` / `stop`，见其注意事项。
 - **提供方级限制**：`/v1/models` 不报上下文长度，`contextWindow` / `maxTokens` 是配置值而非发现值。
 
-## 与 dsh-opencode-go 的差异
-
-| | `dsh-opencode-go` | `dsh-devin2api` |
-| --- | --- | --- |
-| 协议 | OpenAI / Anthropic / Google SDK | OpenAI Chat Completions |
-| 多账号容灾 | 支持 | 无 |
-| 用量看板 | 本地日志扫描 | 网关 `/v1/quota` |
-| 额度胶囊 | Host remote | 浏览器直连 + CORS |
-| 图片 | 支持 | 当前轮 |
-| 规模 | ~60k 行 + 构建链 | ~2.1k 行纯 ESM，零构建 |
-
 ## 开发
 
 ```bash
