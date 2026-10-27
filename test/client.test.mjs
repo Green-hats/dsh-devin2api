@@ -9,6 +9,9 @@ import { test } from 'node:test';
 
 const source = fs.readFileSync(path.join(import.meta.dirname, '..', 'lib', 'client.js'), 'utf8');
 
+/** 预置 useState 的初始值，用来把带数据的分支渲染出来。 */
+const stateQueue = [];
+
 /** 极简 React 桩：只提供本插件用到的 API。 */
 class StubComponent {
 	constructor(props) {
@@ -22,7 +25,10 @@ const React = {
 	Component: StubComponent,
 	Fragment: Symbol('Fragment'),
 	createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
-	useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
+	useState: (initial) => {
+		if (stateQueue.length > 0) return [stateQueue.shift(), () => {}];
+		return [typeof initial === 'function' ? initial() : initial, () => {}];
+	},
 	useEffect: () => {},
 	useCallback: (fn) => fn,
 	useRef: (initial) => ({ current: initial }),
@@ -132,4 +138,39 @@ test('设置页面板在空目录下也能渲染', () => {
 	const tree = panel({});
 	assert.equal(tree.type, 'div');
 	assert.ok(Array.isArray(tree.children));
+});
+
+
+test('模型列表带数据时能渲染出每一行', () => {
+	const module = loadClient();
+	const { ctx, registrations } = fakeContext();
+	module.apply(ctx);
+	const guarded = registrations.find((entry) => entry.options.id === 'devin2api').view;
+	const panel = guarded({}).children[0].type;
+	// useState 的调用顺序：gateway、quota、models、filter、writeNote。
+	stateQueue.push(
+		{ data: { status: 'ok' }, error: null, at: 0 },
+		{ data: { daily_remaining_percent: 71, weekly_remaining_percent: 65 }, error: null, at: 0 },
+		{
+			data: {
+				data: [
+					{ id: 'glm-5-2', supports_images: true },
+					{ id: 'kimi-k3', supports_images: false },
+				],
+			},
+			error: null,
+			at: 0,
+		},
+		'',
+		null,
+	);
+	try {
+		const tree = panel({});
+		// 找到"全开"按钮，确认工具行渲染出来了。
+		const flat = JSON.stringify(tree, (_key, value) => (typeof value === 'symbol' ? String(value) : value));
+		assert.ok(flat.includes('全开'), '工具行应渲染');
+		assert.ok(flat.includes('glm-5-2'), '模型行应渲染');
+	} finally {
+		stateQueue.length = 0;
+	}
 });
