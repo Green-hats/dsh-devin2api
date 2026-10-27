@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / "docs"
@@ -249,7 +249,166 @@ def architecture() -> None:
     render("architecture.png", 1600, 760, "".join(body))
 
 
+HELV = "/System/Library/Fonts/HelveticaNeue.ttc"
+HIRA = "/System/Library/Fonts/Hiragino Sans GB.ttc"
+
+UI_TEXT = (248, 250, 252, 255)
+UI_MUTED = (147, 164, 189, 255)
+UI_DIM = (95, 118, 148, 255)
+UI_GREEN = (52, 211, 153, 255)
+UI_PANEL = (12, 21, 38, 255)
+UI_BORDER = (36, 52, 80, 255)
+
+
+def _ui_font(zh: bool, size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
+    if zh:
+        return ImageFont.truetype(HIRA, int(size), index=2 if bold else 0)
+    return ImageFont.truetype(HELV, int(size), index=1 if bold else 0)
+
+
+def _spaced_text(draw, xy, value, font, fill, spacing=2.2):
+    x, y = xy
+    for char in value:
+        draw.text((x, y), char, font=font, fill=fill)
+        x += draw.textlength(char, font=font) + spacing
+
+
+def _ui_background(w, h):
+    canvas = Image.new("RGBA", (w, h))
+    draw = ImageDraw.Draw(canvas)
+    top, bottom = (10, 16, 30), (16, 30, 54)
+    for y in range(h):
+        t = y / max(1, h - 1)
+        color = tuple(round(top[i] + (bottom[i] - top[i]) * t) for i in range(3))
+        draw.line((0, y, w, y), fill=color + (255,))
+    glow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    glow_draw = ImageDraw.Draw(glow)
+    glow_draw.ellipse((-w * 0.25, -h * 0.55, w * 0.8, h * 0.5), fill=(59, 130, 246, 55))
+    glow_draw.ellipse((w * 0.55, h * 0.55, w * 1.3, h * 1.2), fill=(52, 211, 153, 24))
+    canvas.alpha_composite(glow.filter(ImageFilter.GaussianBlur(140)))
+    for y in range(0, h, 26):
+        for x in range(0, w, 26):
+            draw.ellipse((x, y, x + 2, y + 2), fill=(34, 49, 75, 70))
+    return canvas
+
+
+def _card(draw, box):
+    draw.rounded_rectangle(box, radius=18, fill=UI_PANEL, outline=UI_BORDER, width=1)
+
+
+def _paste_rounded(canvas, image, xy, radius, border=UI_BORDER):
+    x, y = xy
+    w, h = image.size
+    shadow = Image.new("RGBA", (w + 48, h + 48), (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle((24, 24, 24 + w, 24 + h), radius=radius, fill=(0, 0, 0, 120))
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(14)), (x - 24, y - 24 + 8))
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, w - 1, h - 1), radius=radius, fill=255)
+    layer = image.convert("RGBA").copy()
+    layer.putalpha(mask)
+    canvas.alpha_composite(layer, (x, y))
+    ImageDraw.Draw(canvas).rounded_rectangle((x, y, x + w - 1, y + h - 1), radius=radius, outline=border, width=1)
+
+
+def ui_showcase(lang: str) -> None:
+    zh = lang == "zh"
+    W, H = 1600, 1080
+    canvas = _ui_background(W, H)
+    draw = ImageDraw.Draw(canvas)
+
+    _spaced_text(draw, (64, 50), "WEB UI", _ui_font(zh, 12), UI_DIM)
+    draw.text(
+        (64, 84),
+        "设置页与额度胶囊" if zh else "Settings and quota, in place",
+        font=_ui_font(zh, 34, True),
+        fill=UI_TEXT,
+    )
+    draw.text(
+        (64, 134),
+        "设置 → Devin2API 与输入区胶囊的真实截图。" if zh else "The real settings page and the composer, side by side.",
+        font=_ui_font(zh, 15),
+        fill=UI_MUTED,
+    )
+
+    # settings page
+    _card(draw, (56, 180, 1056, 1000))
+    draw.text((84, 206), "设置 → Devin2API" if zh else "Settings → Devin2API", font=_ui_font(True, 20, True), fill=UI_TEXT)
+    draw.text((84, 236), "额度与模型目录" if zh else "quota and catalog", font=_ui_font(zh, 12), fill=UI_DIM)
+    draw.line((84, 260, 1028, 260), fill=(27, 41, 64, 255))
+    settings = Image.open(DOCS / "settings.jpg")
+    settings = settings.resize((827, round(827 * settings.height / settings.width)), Image.LANCZOS)
+    _paste_rounded(canvas, settings, (142, 276), 10)
+
+    # composer
+    _card(draw, (1088, 180, 1544, 430))
+    draw.text((1112, 206), "输入区" if zh else "Composer", font=_ui_font(zh, 20, True), fill=UI_TEXT)
+    draw.text((1112, 236), "额度胶囊在这里" if zh else "the quota pill lives here", font=_ui_font(zh, 12), fill=UI_DIM)
+    draw.line((1112, 260, 1520, 260), fill=(27, 41, 64, 255))
+    composer = Image.open(DOCS / "composer.png")
+    composer = composer.resize((408, round(408 * composer.height / composer.width)), Image.LANCZOS)
+    _paste_rounded(canvas, composer, (1112, 276), 8)
+    draw.text(
+        (1112, 352),
+        "60 秒轮询 · 点击跳过缓存" if zh else "60 s poll · click for ?fresh=1",
+        font=_ui_font(zh, 12),
+        fill=UI_MUTED,
+    )
+    draw.text(
+        (1112, 374),
+        "仅在 devin2api 模型下出现" if zh else "only for a devin2api model",
+        font=_ui_font(zh, 12),
+        fill=UI_MUTED,
+    )
+
+    # pill close-up
+    _card(draw, (1088, 450, 1544, 770))
+    draw.text((1112, 476), "额度胶囊" if zh else "Quota pill", font=_ui_font(zh, 20, True), fill=UI_TEXT)
+    draw.text((1112, 506), "日 / 周剩余额度" if zh else "daily / weekly remaining", font=_ui_font(zh, 12), fill=UI_DIM)
+    draw.line((1112, 530, 1520, 530), fill=(27, 41, 64, 255))
+    source = Image.open(DOCS / "composer.png")
+    pill = source.crop((1020, 158, 1310, 232))
+    pill = pill.resize((408, round(408 * pill.height / pill.width)), Image.LANCZOS)
+    _paste_rounded(canvas, pill, (1112, 546), 8)
+    draw.text((1112, 670), "日 71% │ 周 65%", font=_ui_font(True, 17, True), fill=UI_GREEN)
+    draw.text(
+        (1112, 696),
+        "点击刷新，跳过网关 5 分钟缓存" if zh else "click to refresh, bypassing the gateway cache",
+        font=_ui_font(zh, 12),
+        fill=UI_MUTED,
+    )
+
+    # status summary
+    _card(draw, (1088, 790, 1544, 1000))
+    draw.text((1112, 816), "一眼看" if zh else "At a glance", font=_ui_font(zh, 20, True), fill=UI_TEXT)
+    rows = [
+        ("网关 · 127.0.0.1:18089" if zh else "gateway · 127.0.0.1:18089"),
+        ("目录 · 122 个模型 · 已启用 5" if zh else "catalog · 122 models · 5 enabled"),
+        ("设置 · 即时生效（volatile）" if zh else "settings · live (volatile)"),
+        ("浏览器 · 只读端点不带密钥" if zh else "browser · CORS, no API key"),
+    ]
+    y = 852
+    for row in rows:
+        draw.ellipse((1112, y + 6, 1118, y + 12), fill=UI_GREEN)
+        draw.text((1126, y), row, font=_ui_font(zh, 13), fill=UI_MUTED)
+        y += 26
+
+    draw.text((64, 1038), "Devin2API · DeepSeek Harness", font=_ui_font(zh, 12), fill=UI_DIM)
+    draw.text(
+        (1536, 1038),
+        "github.com/Green-hats/dsh-devin2api",
+        font=_ui_font(False, 12),
+        fill=UI_DIM,
+        anchor="ra",
+    )
+
+    out = DOCS / ("ui.zh-CN.png" if zh else "ui.png")
+    canvas.convert("RGB").save(out, optimize=True)
+    print(f"{out.relative_to(ROOT)}  {W}x{H}  {out.stat().st_size // 1024} KiB")
+
+
 if __name__ == "__main__":
     banner("en")
     banner("zh")
     architecture()
+    ui_showcase("en")
+    ui_showcase("zh")
