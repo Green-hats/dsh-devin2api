@@ -157,3 +157,44 @@ test('工具调用不打断当前轮图片上传', needsHost, async () => {
 		'新一轮开始后历史图片应替换为占位文本',
 	);
 });
+
+test('流式中途取消抛出 ABORTED，而不是 TRANSPORT', needsHost, async () => {
+	const originalFetch = globalThis.fetch;
+	const controller = new AbortController();
+	let streamController;
+	try {
+		globalThis.fetch = async () => {
+			const body = new ReadableStream({
+				start(target) {
+					streamController = target;
+					target.enqueue(
+						new TextEncoder().encode('data: {"choices":[{"delta":{"content":"hi"}}]}\n\n'),
+					);
+				},
+			});
+			return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+		};
+		const adapter = new DevinAdapter({ baseURL: 'http://x/v1' }, console, () => undefined);
+		const chunks = [];
+		await assert.rejects(
+			(async () => {
+				for await (const chunk of adapter.stream({
+					provider: 'devin2api',
+					model: 'm',
+					signal: controller.signal,
+					messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+				})) {
+					chunks.push(chunk);
+					if (chunk.type === 'text-delta') {
+						controller.abort();
+						streamController.error(new DOMException('The operation was aborted.', 'AbortError'));
+					}
+				}
+			})(),
+			(error) => error?.code === 'ABORTED',
+		);
+		assert.ok(chunks.some((chunk) => chunk.type === 'text-delta'), '取消前的内容仍然产出');
+	} finally {
+		globalThis.fetch = originalFetch;
+	}
+});
