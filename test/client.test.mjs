@@ -298,6 +298,29 @@ test('只读设置下模型开关是禁用的', () => {
 	assert.equal(toggle.props.disabled, true, '只读时开关应禁用');
 });
 
+test('全部关闭时面板说明宿主的回退行为', () => {
+	const module = loadClient();
+	const form = {
+		getSnapshot: () => ({
+			status: 'ready',
+			writable: true,
+			revision: 1,
+			value: {
+				providers: { devin2api: { baseURL: 'http://127.0.0.1:18089/v1', modelVisibility: { 'glm-5-2': false } } },
+			},
+		}),
+		subscribe: () => () => {},
+		mutate: async () => true,
+	};
+	const { ctx, registrations } = contextWithForm(form);
+	module.apply(ctx);
+	const guarded = registrations.find((entry) => entry.options.id === 'devin2api').view;
+	const panel = guarded({}).children[0].type;
+	const tree = renderPanel(panel, [{ id: 'glm-5-2' }]);
+	const flat = JSON.stringify(tree, (_key, value) => (typeof value === 'symbol' ? String(value) : value));
+	assert.ok(flat.includes('宿主会回退显示完整目录'), '全部关闭时应提示回退行为');
+});
+
 test('胶囊在非 devin2api 模型下隐藏', () => {
 	const module = loadClient();
 	const { ctx, registrations } = fakeContext();
