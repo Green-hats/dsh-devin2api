@@ -83,6 +83,17 @@ test('消息与工具转换为 OpenAI Chat Completions', () => {
 	assert.equal(body.tools[0].function.name, 'lookup');
 });
 
+test('采样控制透传到请求体', () => {
+	const base = { model: 'm', messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }] };
+	const body = toChatRequest({ ...base, temperature: 0.2, stop: ['DONE', ''] }, { maxTokens: 10 });
+	assert.equal(body.temperature, 0.2);
+	assert.deepEqual(body.stop, ['DONE']);
+
+	const bare = toChatRequest({ ...base, temperature: Number.NaN, stop: [] }, { maxTokens: 10 });
+	assert.equal('temperature' in bare, false);
+	assert.equal('stop' in bare, false);
+});
+
 test('历史中段的 system 消息不会被丢弃', () => {
 	const messages = toChatMessages({
 		messages: [
