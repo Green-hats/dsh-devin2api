@@ -1,6 +1,6 @@
 <div align="center">
 
-# dsh-devin2api
+<img src="docs/banner.zh-CN.png" alt="dsh-devin2api —— 把 devin-2api-lite 接入 DeepSeek Harness 的模型提供方插件" width="100%">
 
 **把 [devin-2api-lite](https://github.com/Green-hats/devin-2api-lite) 接入 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的模型提供方插件。**
 
@@ -26,11 +26,6 @@
 
 插件在 Harness 中注册提供方路由 **`devin2api`**：目录来自网关的 `GET /v1/models`，请求走
 `POST /v1/chat/completions` 并翻译成 DSH 的 `StreamChunk`，同时在 Web UI 里提供设置页、模型开关和额度胶囊。
-
-```
-DSH Agent ──StreamChunk──► dsh-devin2api ──HTTP + SSE──► devin-2api-lite ──Connect RPC──► Devin
-             ◄── OpenAI Chat Completions ─────────────┘
-```
 
 零构建，纯 ESM；除 DSH 自带的包外没有运行时依赖。
 
@@ -191,6 +186,10 @@ curl -s http://127.0.0.1:18089/v1/quota
 
 ## 界面
 
+<img src="docs/surfaces.zh-CN.png" alt="三个界面：Devin2API 设置页、Models 提供方行、输入区额度胶囊" width="100%">
+
+_示意图，非截图；胶囊文案当前为中文。_
+
 **设置 → Devin2API**（独立页面）：
 
 - 网关连接状态与解析后的根地址；
@@ -293,6 +292,8 @@ curl -s http://127.0.0.1:18089/v1/quota
 
 ## 架构
 
+<img src="docs/architecture.png" alt="架构：DeepSeek Harness → dsh-devin2api → devin-2api-lite → Devin" width="100%">
+
 | 文件 | 作用 |
 | --- | --- |
 | `lib/index.js` | Host 适配器：注册、目录、流、图片、模型发现、设置策略 |
@@ -363,11 +364,15 @@ lib/schema.js      Config schema
 lib/client.js      Web 客户端模块
 test/              node:test 测试 + DSH 桩
 .github/workflows  Node 22/24 CI
+docs/              README 图片（用 `scripts/make-images.py` 重新生成）
 ```
 
 新增配置字段：在 `profileSchema` 里加字段并标 `.volatile()`，在 `PROFILE_DEFAULTS` 里加默认值，扩展
 `test/protocol.test.mjs` 的 volatile 守门测试，并同步两份 README。设置写入必须能作用到运行中的适配器；不要在
 `apply` 里提前拆开配置对象。
+
+图片是生成的，不要手改：`python3 scripts/make-images.py` 从 `docs/` 渲染 banner 和示意图（需要
+`rsvg-convert` 与 Pillow）。
 
 ## 相关项目
 

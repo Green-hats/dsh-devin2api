@@ -1,6 +1,6 @@
 <div align="center">
 
-# dsh-devin2api
+<img src="docs/banner.png" alt="dsh-devin2api — Devin2API model provider for DeepSeek Harness" width="100%">
 
 **A model-provider plugin that brings [devin-2api-lite](https://github.com/Green-hats/devin-2api-lite) into [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).**
 
@@ -28,11 +28,6 @@ English | [中文](README.zh-CN.md)
 `dsh-devin2api` registers the provider route **`devin2api`** inside DeepSeek Harness. It reads the gateway catalog from
 `GET /v1/models`, streams `POST /v1/chat/completions` as DSH `StreamChunk`s, and adds a settings page, per-model
 visibility switches, and a daily/weekly quota pill to the Web UI.
-
-```
-DSH agent ──StreamChunk──► dsh-devin2api ──HTTP + SSE──► devin-2api-lite ──Connect RPC──► Devin
-             ◄── OpenAI Chat Completions ─────────────┘
-```
 
 No build step. No runtime dependencies beyond the packages DSH already provides.
 
@@ -197,6 +192,10 @@ the reverse) requires a plugin reload. See [Known limitations](#known-limitation
 
 ## Web UI
 
+<img src="docs/surfaces.png" alt="UI surfaces: the Devin2API settings page, the Models provider row, and the composer quota pill" width="100%">
+
+_Schematic of the three surfaces; the UI copy is Chinese today._
+
 **Settings → Devin2API** (own page):
 
 - gateway connection state and resolved root URL;
@@ -305,6 +304,8 @@ Cancellation is reported as `ABORTED` (not `TRANSPORT`), so the harness can dist
 
 ## Architecture
 
+<img src="docs/architecture.png" alt="Architecture: DeepSeek Harness to dsh-devin2api to devin-2api-lite to Devin" width="100%">
+
 | File | Role |
 | --- | --- |
 | `lib/index.js` | Host adapter: registration, catalog, stream, images, discovery, settings policy |
@@ -378,11 +379,15 @@ lib/schema.js      Config schema
 lib/client.js      Web client module
 test/              node:test suites + DSH stub
 .github/workflows  Node 22/24 CI
+docs/              README artwork (regenerate with `scripts/make-images.py`)
 ```
 
 Adding a configuration field: add it to `profileSchema` with `.volatile()`, add its default to `PROFILE_DEFAULTS`,
 extend the volatile-form guard in `test/protocol.test.mjs`, and update both READMEs. Settings writes must remain live
 on the running adapter; do not unwrap the config object in `apply`.
+
+The artwork is generated, not hand-edited: `python3 scripts/make-images.py` renders the banners and diagrams from
+`docs/` (needs `rsvg-convert` and Pillow).
 
 ## Related
 
