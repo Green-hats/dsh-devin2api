@@ -10,7 +10,16 @@ import { test } from 'node:test';
 const source = fs.readFileSync(path.join(import.meta.dirname, '..', 'lib', 'client.js'), 'utf8');
 
 /** 极简 React 桩：只提供本插件用到的 API。 */
+class StubComponent {
+	constructor(props) {
+		this.props = props;
+		this.state = {};
+	}
+}
+StubComponent.getDerivedStateFromError = () => ({ error: null });
+
 const React = {
+	Component: StubComponent,
 	Fragment: Symbol('Fragment'),
 	createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
 	useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
@@ -104,7 +113,8 @@ test('胶囊在非 devin2api 模型下隐藏', () => {
 	const module = loadClient();
 	const { ctx, registrations } = fakeContext();
 	module.apply(ctx);
-	const pill = registrations.find((entry) => entry.options.id === 'devin2api-quota').view;
+	const guarded = registrations.find((entry) => entry.options.id === 'devin2api-quota').view;
+	const pill = guarded({}).children[0].type;
 	assert.equal(pill({ directory: undefined }), null);
 	const other = {
 		getSnapshot: () => ({ current: { provider: 'opencode-go', model: 'kimi' } }),
@@ -117,7 +127,8 @@ test('设置页面板在空目录下也能渲染', () => {
 	const module = loadClient();
 	const { ctx, registrations } = fakeContext();
 	module.apply(ctx);
-	const panel = registrations.find((entry) => entry.options.id === 'devin2api').view;
+	const guarded = registrations.find((entry) => entry.options.id === 'devin2api').view;
+	const panel = guarded({}).children[0].type;
 	const tree = panel({});
 	assert.equal(tree.type, 'div');
 	assert.ok(Array.isArray(tree.children));
