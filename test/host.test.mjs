@@ -198,3 +198,36 @@ test('流式中途取消抛出 ABORTED，而不是 TRANSPORT', needsHost, async 
 		globalThis.fetch = originalFetch;
 	}
 });
+
+test('模型发现优先使用请求里的临时密钥', needsHost, async () => {
+	const originalFetch = globalThis.fetch;
+	let discovery;
+	const ctx = {
+		logger: { info() {}, warn() {} },
+		llm: {
+			registerAdapter() {},
+			registerConfigurableProviders() {},
+			registerModelDiscovery: (_ns, callback) => {
+				discovery = callback;
+			},
+		},
+		get: () => undefined,
+	};
+	apply(ctx, { providers: { devin2api: { enabled: cell(true), baseURL: cell('http://saved.example/v1') } } });
+	let seen;
+	try {
+		globalThis.fetch = async (url, init) => {
+			seen = { url: String(url), authorization: init?.headers?.authorization };
+			return new Response(JSON.stringify({ data: [{ id: 'm1' }] }), {
+				status: 200,
+				headers: { 'content-type': 'application/json' },
+			});
+		};
+		const models = await discovery({ baseURL: 'http://draft.example/v1', apiKey: 'draft-key' });
+		assert.equal(seen.url, 'http://draft.example/v1/models');
+		assert.equal(seen.authorization, 'Bearer draft-key');
+		assert.deepEqual(models.map((model) => model.id), ['m1']);
+	} finally {
+		globalThis.fetch = originalFetch;
+	}
+});
