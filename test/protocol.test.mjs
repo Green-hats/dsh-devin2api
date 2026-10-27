@@ -245,6 +245,12 @@ test('每个可编辑字段都是 volatile，否则设置页会显示 unavailabl
 	assert.deepEqual(missing, [], '这些字段缺少 .volatile()');
 });
 
+test('models 同时接受字符串与 { id, name } 条目', async () => {
+	const { Config } = await import('../lib/schema.js');
+	const resolved = Config({ providers: { devin2api: { models: ['alpha', { id: 'beta', name: 'Beta' }] } } });
+	assert.deepEqual(unwrapVolatile(resolved.providers.devin2api.models), ['alpha', { id: 'beta', name: 'Beta' }]);
+});
+
 test('unwrapVolatile 解开 cell，普通值原样返回', () => {
 	const cell = (value) => ({ get: () => value });
 	assert.equal(unwrapVolatile(cell('http://x/v1')), 'http://x/v1');
