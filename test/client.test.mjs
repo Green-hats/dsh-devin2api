@@ -115,6 +115,43 @@ test('client 模块注册额度胶囊与设置页条目', () => {
 	assert.deepEqual(ids, ['devin2api', 'devin2api-quota']);
 });
 
+test('配置表单只保留一条活跃订阅', () => {
+	const module = loadClient();
+	const listeners = new Set();
+	const form = {
+		getSnapshot: () => ({
+			status: 'ready',
+			writable: true,
+			revision: 1,
+			value: { providers: { devin2api: { baseURL: 'http://127.0.0.1:18089/v1', modelVisibility: {} } } },
+		}),
+		subscribe: (listener) => {
+			listeners.add(listener);
+			return () => listeners.delete(listener);
+		},
+		mutate: async () => true,
+	};
+	const forms = {
+		get: () => form,
+		describe: () => ({ getSnapshot: () => ({ view: { namespaces: [{ ns: 'devin2api', value: { providers: { devin2api: {} } } }] } }) }),
+	};
+	const slots = { inject: (_name, register) => (register(), () => {}), register: () => () => {} };
+	const ctx = {
+		slots,
+		get: (name) => (name === 'configForms' ? forms : undefined),
+		effect: (fn) => {
+			const dispose = fn();
+			return typeof dispose === 'function' ? dispose : () => {};
+		},
+		inject: (services, callback) => {
+			if (services.includes('configForms')) callback({ ...ctx, configForms: forms });
+			return () => {};
+		},
+	};
+	module.apply(ctx);
+	assert.equal(listeners.size, 1, '同步 attach 与注入 attach 之后只应保留一条订阅');
+});
+
 test('胶囊在非 devin2api 模型下隐藏', () => {
 	const module = loadClient();
 	const { ctx, registrations } = fakeContext();
