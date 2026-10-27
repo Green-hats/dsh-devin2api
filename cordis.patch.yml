@@ -1,0 +1,13 @@
+# dsh-devin2api 的 profile 补丁：插入插件行。
+# `providers` 字典供 Models 设置页按 provider 编辑（settingsPath = providers.devin2api）。
+- insert:
+    - id: devin2api
+      name: dsh-devin2api
+      config:
+        providers:
+          devin2api:
+            displayName: Devin2API
+            baseURL: http://127.0.0.1:18089/v1
+            apiKeyEnv: DEVIN2API_API_KEY
+            enabled: true
+            images: true
