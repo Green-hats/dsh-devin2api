@@ -218,17 +218,24 @@ test('模型发现优先使用请求里的临时密钥', needsHost, async () => 
 	try {
 		globalThis.fetch = async (url, init) => {
 			seen = { url: String(url), authorization: init?.headers?.authorization };
-			return new Response(JSON.stringify({ data: [{ id: 'm1', context_length: 1_000_000 }, { id: 'm2' }] }), {
-				status: 200,
-				headers: { 'content-type': 'application/json' },
-			});
+			return new Response(
+				JSON.stringify({
+					data: [
+						{ id: 'm1', context_length: 1_000_000 },
+						{ id: 'm2' },
+						{ id: 'swe-2', context_length: 262_000 },
+					],
+				}),
+				{ status: 200, headers: { 'content-type': 'application/json' } },
+			);
 		};
 		const models = await discovery({ baseURL: 'http://draft.example/v1', apiKey: 'draft-key' });
 		assert.equal(seen.url, 'http://draft.example/v1/models');
 		assert.equal(seen.authorization, 'Bearer draft-key');
-		assert.deepEqual(models.map((model) => model.id), ['m1', 'm2']);
+		assert.deepEqual(models.map((model) => model.id), ['m1', 'm2', 'swe-2']);
 		assert.equal(models[0].contextWindow, 1_000_000, 'gateway context_length is adopted');
 		assert.equal(models[1].contextWindow, 262144, 'a model without context_length falls back to the provider value');
+		assert.equal(models[2].maxTokens, 65536, 'swe-2 advertises the smaller output reservation');
 	} finally {
 		globalThis.fetch = originalFetch;
 	}
@@ -238,6 +245,8 @@ test('resolveModel 按模型返回网关声明的上下文，缺省时回落 pro
 	const gateway = await startCatalog([
 		{ id: 'large', context_length: 1_000_000 },
 		{ id: 'small' },
+		{ id: 'swe-2', context_length: 262_000 },
+		{ id: 'swe-2-high', context_length: 262_000 },
 	]);
 	t.after(() => gateway.close());
 	const adapter = new DevinAdapter(
@@ -250,6 +259,27 @@ test('resolveModel 按模型返回网关声明的上下文，缺省时回落 pro
 	assert.equal(large.defaultMaxTokens, 128000);
 	const small = await adapter.resolveModel('devin2api', 'small');
 	assert.equal(small.context.contextWindow, 262144);
+	const swe = await adapter.resolveModel('devin2api', 'swe-2');
+	assert.equal(swe.defaultMaxTokens, 65536, 'swe-2 drops its output reservation to 64k');
+	const sweHigh = await adapter.resolveModel('devin2api', 'swe-2-high');
+	assert.equal(sweHigh.defaultMaxTokens, 65536, 'the swe-2 prefix covers effort tiers');
+});
+
+test('modelMaxTokens 配置覆盖内置的 swe-2 规则', needsHost, async (t) => {
+	const gateway = await startCatalog([{ id: 'swe-2', context_length: 262_000 }, { id: 'other' }]);
+	t.after(() => gateway.close());
+	const adapter = new DevinAdapter(
+		{
+			baseURL: gateway.baseURL,
+			contextWindow: cell(262144),
+			maxTokens: cell(128000),
+			modelMaxTokens: cell({ 'swe-2': 32000 }),
+		},
+		console,
+		() => undefined,
+	);
+	assert.equal((await adapter.resolveModel('devin2api', 'swe-2')).defaultMaxTokens, 32000);
+	assert.equal((await adapter.resolveModel('devin2api', 'other')).defaultMaxTokens, 128000);
 });
 
 test('providerInfo 使用配置里的 displayName', needsHost, () => {

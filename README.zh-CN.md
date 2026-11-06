@@ -90,7 +90,8 @@ curl -s http://127.0.0.1:18089/healthz
 | `models` | `[]` | 空 = 全部；非空为 id 或 `{ id, name }` 白名单 |
 | `modelVisibility` | `{}` | 每模型开关；`false` 表示隐藏 |
 | `images` | `true` | 对视觉模型声明图片输入 |
-| `contextWindow` / `maxTokens` | `262144` / `128000` | 上下文窗口按模型取网关 `/v1/models` 的 `context_length`，缺失时用这里的值；`maxTokens` 仍是全局输出预留 |
+| `contextWindow` / `maxTokens` | `262144` / `128000` | 上下文窗口按模型取网关 `/v1/models` 的 `context_length`，缺失时用这里的值；`maxTokens` 是全局输出预留 |
+| `modelMaxTokens` | `{ "swe-2": 65536 }` | 按模型覆盖输出预留（精确 id 或家族前缀）。SWE-2 的 262k 窗口配 128k 会在约 26% 就压缩 |
 | `refreshMinutes` | `5` | 目录缓存 TTL（最小 1） |
 | `requestTimeoutMs` | `300000` | 单次请求超时（含流） |
 | `imagePixelBudget` / `imageMaxBytes` | `4194304` / `1048576` | 单图像素与字节预算 |
@@ -167,13 +168,13 @@ lib/client.js    设置页、模型开关、额度胶囊
 - `enabled` 需要重载。
 - 浏览器 UI 不带鉴权；请使用 `auth.api_key` 为空的回环网关。
 - UI 文案暂为中文。
-- `contextWindow` 按模型取网关的 `context_length`（lite 新版本提供），旧网关或不带该字段的模型回落到配置值；`maxTokens` 仍是配置值，网关不提供按模型输出上限。
+- `contextWindow` 按模型取网关的 `context_length`（lite 新版本提供），旧网关或不带该字段的模型回落到配置值；`maxTokens` 仍是配置值，内置的 `modelMaxTokens` 只把 `swe-2` 系列降到 64k——网关不提供按模型输出上限。
 
 ## 开发
 
 ```bash
 npm install --legacy-peer-deps   # schema 测试用的 schemastery
-npm test                         # 31 项测试
+npm test                         # 32 项测试
 npm run check                    # 对 lib/*.js 跑 node --check
 ```
 

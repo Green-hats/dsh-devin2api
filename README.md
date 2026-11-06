@@ -92,7 +92,8 @@ Everything lives under `providers.devin2api`:
 | `models` | `[]` | Empty = all. Non-empty allowlist of ids or `{ id, name }` |
 | `modelVisibility` | `{}` | Per-model switch; `false` hides a model |
 | `images` | `true` | Declare image input for vision models |
-| `contextWindow` / `maxTokens` | `262144` / `128000` | The window comes per model from `/v1/models` `context_length` (fallback here); `maxTokens` stays a global output reservation |
+| `contextWindow` / `maxTokens` | `262144` / `128000` | The window comes per model from `/v1/models` `context_length` (fallback here); `maxTokens` is the global output reservation |
+| `modelMaxTokens` | `{ "swe-2": 65536 }` | Per-model output reservation (id or family prefix). SWE-2's 262k window with a 128k reservation would compact at ~26% |
 | `refreshMinutes` | `5` | Catalog cache TTL (minimum 1) |
 | `requestTimeoutMs` | `300000` | Per-request timeout including the stream |
 | `imagePixelBudget` / `imageMaxBytes` | `4194304` / `1048576` | Resize target per image |
@@ -171,13 +172,13 @@ lib/client.js    settings page, switches, quota pill
 - `enabled` requires a reload.
 - The browser UI is unauthenticated; use a loopback gateway with `auth.api_key` unset.
 - UI copy is Chinese-only.
-- `contextWindow` is discovered per model from the gateway's `context_length` (newer lite builds); models without it fall back to the configured value. `maxTokens` stays configured — the gateway exposes no per-model output cap.
+- `contextWindow` is discovered per model from the gateway's `context_length` (newer lite builds); models without it fall back to the configured value. `maxTokens` stays configured, with a bundled `modelMaxTokens` override for `swe-2` (64k) — the gateway exposes no per-model output cap.
 
 ## Development
 
 ```bash
 npm install --legacy-peer-deps   # schemastery for the schema tests
-npm test                         # 31 tests
+npm test                         # 32 tests
 npm run check                    # node --check for lib/*.js
 ```
 
