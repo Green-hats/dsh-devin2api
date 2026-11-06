@@ -92,7 +92,7 @@ Everything lives under `providers.devin2api`:
 | `models` | `[]` | Empty = all. Non-empty allowlist of ids or `{ id, name }` |
 | `modelVisibility` | `{}` | Per-model switch; `false` hides a model |
 | `images` | `true` | Declare image input for vision models |
-| `contextWindow` / `maxTokens` | `262144` / `128000` | Limits reported to DSH (not in `/v1/models`) |
+| `contextWindow` / `maxTokens` | `262144` / `128000` | The window comes per model from `/v1/models` `context_length` (fallback here); `maxTokens` stays a global output reservation |
 | `refreshMinutes` | `5` | Catalog cache TTL (minimum 1) |
 | `requestTimeoutMs` | `300000` | Per-request timeout including the stream |
 | `imagePixelBudget` / `imageMaxBytes` | `4194304` / `1048576` | Resize target per image |
@@ -171,13 +171,13 @@ lib/client.js    settings page, switches, quota pill
 - `enabled` requires a reload.
 - The browser UI is unauthenticated; use a loopback gateway with `auth.api_key` unset.
 - UI copy is Chinese-only.
-- `contextWindow` / `maxTokens` are configured, not discovered.
+- `contextWindow` is discovered per model from the gateway's `context_length` (newer lite builds); models without it fall back to the configured value. `maxTokens` stays configured — the gateway exposes no per-model output cap.
 
 ## Development
 
 ```bash
 npm install --legacy-peer-deps   # schemastery for the schema tests
-npm test                         # 30 tests
+npm test                         # 31 tests
 npm run check                    # node --check for lib/*.js
 ```
 

@@ -219,19 +219,33 @@ test('上游 error 分片转成终止错误', () => {
 test('目录与额度解析', () => {
 	const models = parseModels({
 		data: [
-			{ id: 'glm-5-3', supports_images: true, reasoning_efforts: ['high', 'low'], requires_reasoning_effort: true },
+			{
+				id: 'glm-5-3',
+				supports_images: true,
+				reasoning_efforts: ['high', 'low'],
+				requires_reasoning_effort: true,
+				context_length: 1_000_000,
+			},
 			{ id: 'glm-5-3' },
+			{ id: 'bad-context', context_length: 0 },
+			{ id: 'string-context', context_length: '1000' },
 		],
 	});
-	assert.equal(models.length, 1, 'duplicate ids are dropped');
+	assert.equal(models.length, 3, 'duplicate ids are dropped');
 	assert.deepEqual(models[0].reasoningEfforts, ['high', 'low']);
 	assert.equal(models[0].supportsImages, true);
+	assert.equal(models[0].contextWindow, 1_000_000, 'context_length becomes the per-model window');
+	assert.equal(models[1].contextWindow, undefined, 'zero is not a window');
+	assert.equal(models[2].contextWindow, undefined, 'a string is not a window');
 
 	const resolved = toResolvedModel('devin2api', models[0], { contextWindow: 262144, maxTokens: 128000 });
-	assert.equal(resolved.context.contextWindow, 262144);
+	assert.equal(resolved.context.contextWindow, 1_000_000, 'the catalog window wins over the provider fallback');
 	assert.equal(resolved.defaultMaxTokens, 128000);
 	assert.deepEqual(resolved.reasoning.efforts.map((effort) => effort.id), ['high', 'low']);
 	assert.equal(resolved.reasoning.defaultEffort, 'high');
+
+	const fallback = toResolvedModel('devin2api', models[1], { contextWindow: 262144, maxTokens: 128000 });
+	assert.equal(fallback.context.contextWindow, 262144, 'a model without context_length uses the provider fallback');
 
 	const quota = parseQuota({ plan: 'Pro', daily_remaining_percent: 100, weekly_remaining_percent: 98, stale: true });
 	assert.equal(quota.plan, 'Pro');

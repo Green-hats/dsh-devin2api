@@ -218,7 +218,7 @@ test('模型发现优先使用请求里的临时密钥', needsHost, async () => 
 	try {
 		globalThis.fetch = async (url, init) => {
 			seen = { url: String(url), authorization: init?.headers?.authorization };
-			return new Response(JSON.stringify({ data: [{ id: 'm1' }] }), {
+			return new Response(JSON.stringify({ data: [{ id: 'm1', context_length: 1_000_000 }, { id: 'm2' }] }), {
 				status: 200,
 				headers: { 'content-type': 'application/json' },
 			});
@@ -226,10 +226,30 @@ test('模型发现优先使用请求里的临时密钥', needsHost, async () => 
 		const models = await discovery({ baseURL: 'http://draft.example/v1', apiKey: 'draft-key' });
 		assert.equal(seen.url, 'http://draft.example/v1/models');
 		assert.equal(seen.authorization, 'Bearer draft-key');
-		assert.deepEqual(models.map((model) => model.id), ['m1']);
+		assert.deepEqual(models.map((model) => model.id), ['m1', 'm2']);
+		assert.equal(models[0].contextWindow, 1_000_000, 'gateway context_length is adopted');
+		assert.equal(models[1].contextWindow, 262144, 'a model without context_length falls back to the provider value');
 	} finally {
 		globalThis.fetch = originalFetch;
 	}
+});
+
+test('resolveModel 按模型返回网关声明的上下文，缺省时回落 provider 配置', needsHost, async (t) => {
+	const gateway = await startCatalog([
+		{ id: 'large', context_length: 1_000_000 },
+		{ id: 'small' },
+	]);
+	t.after(() => gateway.close());
+	const adapter = new DevinAdapter(
+		{ baseURL: gateway.baseURL, contextWindow: cell(262144), maxTokens: cell(128000) },
+		console,
+		() => undefined,
+	);
+	const large = await adapter.resolveModel('devin2api', 'large');
+	assert.equal(large.context.contextWindow, 1_000_000);
+	assert.equal(large.defaultMaxTokens, 128000);
+	const small = await adapter.resolveModel('devin2api', 'small');
+	assert.equal(small.context.contextWindow, 262144);
 });
 
 test('providerInfo 使用配置里的 displayName', needsHost, () => {
